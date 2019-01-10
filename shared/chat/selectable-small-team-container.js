@@ -4,12 +4,12 @@ import * as Types from '../constants/types/chat2'
 import SelectableSmallTeam from './selectable-small-team'
 import {namedConnect} from '../util/container'
 
-export type OwnProps = {
+export type OwnProps = {|
   conversationIDKey: Types.ConversationIDKey,
   filter?: string,
   isSelected: boolean,
   onSelectConversation: () => void,
-}
+|}
 
 const mapStateToProps = (state, ownProps: OwnProps) => {
   const conversationIDKey = ownProps.conversationIDKey
