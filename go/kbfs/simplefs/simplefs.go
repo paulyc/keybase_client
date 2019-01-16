@@ -664,6 +664,9 @@ func (k *SimpleFS) SimpleFSList(ctx context.Context, arg keybase1.SimpleFSListAr
 				var fis []os.FileInfo
 				if finalElemFI.IsDir() {
 					fis, err = fs.ReadDir(finalElem)
+					if err != nil {
+						return err
+					}
 				} else {
 					fis = append(fis, finalElemFI)
 				}
@@ -681,6 +684,9 @@ func (k *SimpleFS) SimpleFSList(ctx context.Context, arg keybase1.SimpleFSListAr
 					res = append(res, d)
 				}
 				k.updateReadProgress(arg.OpID, 0, int64(len(fis)))
+			}
+			if err != nil {
+				return err
 			}
 			k.setResult(arg.OpID, keybase1.SimpleFSListResult{Entries: res})
 			return nil
