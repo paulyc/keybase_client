@@ -921,6 +921,10 @@
         {
           "type": "PaymentStatus",
           "name": "status"
+        },
+        {
+          "type": "string",
+          "name": "error"
         }
       ]
     },
@@ -931,6 +935,14 @@
         {
           "type": "TimeMs",
           "name": "startTime"
+        },
+        {
+          "type": "TimeMs",
+          "name": "preparedTime"
+        },
+        {
+          "type": "TimeMs",
+          "name": "allSubmittedTime"
         },
         {
           "type": "TimeMs",
