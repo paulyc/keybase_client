@@ -55,22 +55,12 @@ func (t *FacebookServiceType) NormalizeUsername(s string) (string, error) {
 func (t *FacebookServiceType) NormalizeRemoteName(mctx libkb.MetaContext, s string) (string, error) {
 	// Allow a leading '@'.
 	s = strings.TrimPrefix(s, "@")
-	if !facebookUsernameRegexp.MatchString(s) {
-		return "", libkb.NewBadUsernameError(s)
-	}
-	// This is the normalization function that gets called by the Prove engine.
-	// Avoid stripping dots, so that we can preserve them when the username is
-	// displayed.
-	return strings.ToLower(s), nil
+	return t.NormalizeUsername(s)
 }
 
 func (t *FacebookServiceType) GetPrompt() string {
 	return "Your username on Facebook"
 }
-
-// TODO remove this in favor of server flag when server configs are enabled
-// with CORE-9923
-func (t *FacebookServiceType) CanMakeNewProofs() bool { return false }
 
 func (t *FacebookServiceType) ToServiceJSON(un string) *jsonw.Wrapper {
 	return t.BaseToServiceJSON(t, un)

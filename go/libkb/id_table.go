@@ -134,7 +134,7 @@ type RemoteProofChainLink interface {
 	GetRemoteUsername() string
 	GetHostname() string
 	GetProtocol() string
-	DisplayCheck(ui IdentifyUI, lcr LinkCheckResult) error
+	DisplayCheck(m MetaContext, ui IdentifyUI, lcr LinkCheckResult) error
 	ToTrackingStatement(keybase1.ProofState) (*jsonw.Wrapper, error)
 	CheckDataJSON() *jsonw.Wrapper
 	ToIDString() string
@@ -184,8 +184,8 @@ func (w *WebProofChainLink) ToTrackingStatement(state keybase1.ProofState) (*jso
 	return ret, nil
 }
 
-func (w *WebProofChainLink) DisplayCheck(ui IdentifyUI, lcr LinkCheckResult) error {
-	return ui.FinishWebProofCheck(ExportRemoteProof(w), lcr.Export())
+func (w *WebProofChainLink) DisplayCheck(m MetaContext, ui IdentifyUI, lcr LinkCheckResult) error {
+	return ui.FinishWebProofCheck(m, ExportRemoteProof(w), lcr.Export())
 }
 
 func (w *WebProofChainLink) Type() string { return "proof" }
@@ -277,8 +277,8 @@ func (s *SocialProofChainLink) ComputeTrackDiff(tl *TrackLookup) TrackDiff {
 	}
 }
 
-func (s *SocialProofChainLink) DisplayCheck(ui IdentifyUI, lcr LinkCheckResult) error {
-	return ui.FinishSocialProofCheck(ExportRemoteProof(s), lcr.Export())
+func (s *SocialProofChainLink) DisplayCheck(m MetaContext, ui IdentifyUI, lcr LinkCheckResult) error {
+	return ui.FinishSocialProofCheck(m, ExportRemoteProof(s), lcr.Export())
 }
 
 func (s *SocialProofChainLink) CheckDataJSON() *jsonw.Wrapper {
@@ -537,7 +537,7 @@ func (l *TrackChainLink) GetTrackedUID() (keybase1.UID, error) {
 func (l *TrackChainLink) GetTrackedUsername() (NormalizedUsername, error) {
 	tmp, err := l.UnmarshalPayloadJSON().AtPath("body.track.basics.username").GetString()
 	if err != nil {
-		return NormalizedUsername(""), nil
+		return NormalizedUsername(""), fmt.Errorf("no tracked username: %v", err)
 	}
 	return NewNormalizedUsername(tmp), err
 }
@@ -977,8 +977,8 @@ func (s *WalletStellarChainLink) VerifyReverseSig(_ ComputedKeyFamily) (err erro
 	return VerifyReverseSig(s.G(), key, "body.wallet_key.reverse_sig", s.UnmarshalPayloadJSON(), s.reverseSig)
 }
 
-func (s *WalletStellarChainLink) Display(ui IdentifyUI) error {
-	return ui.DisplayStellarAccount(keybase1.StellarAccount{
+func (s *WalletStellarChainLink) Display(m MetaContext, ui IdentifyUI) error {
+	return ui.DisplayStellarAccount(m, keybase1.StellarAccount{
 		AccountID:         s.address,
 		FederationAddress: fmt.Sprintf("%s*keybase.io", s.GetUsername()),
 		SigID:             s.GetSigID(),
@@ -1095,8 +1095,8 @@ func (c *CryptocurrencyChainLink) insertIntoTable(tab *IdentityTable) {
 	tab.cryptocurrency = append(tab.cryptocurrency, c)
 }
 
-func (c CryptocurrencyChainLink) Display(ui IdentifyUI) error {
-	return ui.DisplayCryptocurrency(c.Export())
+func (c CryptocurrencyChainLink) Display(m MetaContext, ui IdentifyUI) error {
+	return ui.DisplayCryptocurrency(m, c.Export())
 }
 
 //
@@ -1168,7 +1168,7 @@ func (s *SelfSigChainLink) ProofText() string          { return "" }
 
 func (s *SelfSigChainLink) GetPGPFullHash() string { return s.extractPGPFullHash("key") }
 
-func (s *SelfSigChainLink) DisplayCheck(ui IdentifyUI, lcr LinkCheckResult) error {
+func (s *SelfSigChainLink) DisplayCheck(m MetaContext, ui IdentifyUI, lcr LinkCheckResult) error {
 	return nil
 }
 
@@ -1224,6 +1224,7 @@ type IdentityTable struct {
 	stellar          *WalletStellarChainLink
 	checkResult      *CheckResult
 	eldest           keybase1.KID
+	hasStubs         bool
 }
 
 func (idt *IdentityTable) GetActiveProofsFor(st ServiceType) (ret []RemoteProofChainLink) {
@@ -1232,6 +1233,10 @@ func (idt *IdentityTable) GetActiveProofsFor(st ServiceType) (ret []RemoteProofC
 
 func (idt *IdentityTable) GetTrackMap() map[NormalizedUsername][]*TrackChainLink {
 	return idt.tracks
+}
+
+func (idt *IdentityTable) HasStubs() bool {
+	return idt.hasStubs
 }
 
 func (idt *IdentityTable) insertLink(l TypedChainLink) {
@@ -1320,7 +1325,7 @@ func NewIdentityTable(m MetaContext, eldest keybase1.KID, sc *SigChain, h *SigHi
 }
 
 func (idt *IdentityTable) populate(m MetaContext) (err error) {
-	defer m.CTrace("IdentityTable#populate", func() error { return err })()
+	defer m.Trace("IdentityTable#populate", func() error { return err })()
 
 	var links []*ChainLink
 	if links, err = idt.sigChain.GetCurrentSubchain(m, idt.eldest); err != nil {
@@ -1333,10 +1338,11 @@ func (idt *IdentityTable) populate(m MetaContext) (err error) {
 			return err
 		}
 		if isBad {
-			idt.G().Log.Debug("Ignoring bad chain link with linkID %s: %s", link.LinkID(), reason)
+			m.Debug("Ignoring bad chain link with linkID %s: %s", link.LinkID(), reason)
 			continue
 		}
 		if link.IsStubbed() {
+			idt.hasStubs = true
 			continue
 		}
 
@@ -1361,10 +1367,6 @@ func isProofTypeDefunct(g *GlobalContext, typ keybase1.ProofType) bool {
 	switch typ {
 	case keybase1.ProofType_COINBASE:
 		return true
-	case keybase1.ProofType_GENERIC_SOCIAL:
-		// TODO Remove with CORE-9923
-		shouldRun := g.Env.GetFeatureFlags().Admin() || g.Env.GetRunMode() == DevelRunMode || g.Env.RunningInCI()
-		return !shouldRun
 	default:
 		return false
 	}
@@ -1519,13 +1521,13 @@ func (idt *IdentityTable) Identify(m MetaContext, is IdentifyState, forceRemoteC
 
 	allAcc := idt.AllActiveCryptocurrency()
 	for _, acc := range allAcc {
-		if err := acc.Display(ui); err != nil {
+		if err := acc.Display(m, ui); err != nil {
 			return err
 		}
 	}
 
 	if stellar := idt.stellar; stellar != nil {
-		if err := stellar.Display(ui); err != nil {
+		if err := stellar.Display(m, ui); err != nil {
 			return err
 		}
 	}
@@ -1547,7 +1549,7 @@ func (idt *IdentityTable) identifyActiveProof(m MetaContext, lcr *LinkCheckResul
 	if ccl != nil {
 		ccl.CCLCheckCompleted(lcr)
 	}
-	return lcr.link.DisplayCheck(ui, *lcr)
+	return lcr.link.DisplayCheck(m, ui, *lcr)
 }
 
 type LinkCheckResult struct {
@@ -1607,7 +1609,7 @@ func (idt *IdentityTable) ComputeRemoteDiff(tracked, trackedTmp, observed keybas
 func (idt *IdentityTable) proofRemoteCheck(m MetaContext, hasPreviousTrack, forceRemoteCheck bool, res *LinkCheckResult, itm IdentifyTableMode) {
 	p := res.link
 
-	m.CDebugf("+ RemoteCheckProof %s", p.ToDebugString())
+	m.Debug("+ RemoteCheckProof %s", p.ToDebugString())
 	doCache := false
 	pvlHashUsed := keybase1.MerkleStoreKitHash("")
 	sid := p.GetSigID()
@@ -1627,13 +1629,13 @@ func (idt *IdentityTable) proofRemoteCheck(m MetaContext, hasPreviousTrack, forc
 		}
 
 		if doCache {
-			m.CDebugf("| Caching results under key=%s pvlHash=%s", sid, pvlHashUsed)
+			m.Debug("| Caching results under key=%s pvlHash=%s", sid, pvlHashUsed)
 			if cacheErr := idt.G().ProofCache.Put(sid, res, pvlHashUsed); cacheErr != nil {
-				m.CWarningf("proof cache put error: %s", cacheErr)
+				m.Warning("proof cache put error: %s", cacheErr)
 			}
 		}
 
-		m.CDebugf("- RemoteCheckProof %s", p.ToDebugString())
+		m.Debug("- RemoteCheckProof %s", p.ToDebugString())
 	}()
 
 	pvlSource := idt.G().GetPvlSource()
@@ -1658,7 +1660,7 @@ func (idt *IdentityTable) proofRemoteCheck(m MetaContext, hasPreviousTrack, forc
 
 	// Call the Global context's version of what a proof checker is. We might want to stub it out
 	// for the purposes of testing.
-	pc, res.err = MakeProofChecker(m.G().GetProofServices(), p)
+	pc, res.err = MakeProofChecker(m, m.G().GetProofServices(), p)
 
 	if res.err != nil || pc == nil {
 		return
@@ -1672,11 +1674,11 @@ func (idt *IdentityTable) proofRemoteCheck(m MetaContext, hasPreviousTrack, forc
 
 	if !forceRemoteCheck {
 		res.cached = m.G().ProofCache.Get(sid, pvlU.Hash)
-		m.CDebugf("| Proof cache lookup for %s: %+v", sid, res.cached)
+		m.Debug("| Proof cache lookup for %s: %+v", sid, res.cached)
 		if res.cached != nil && res.cached.Freshness() == keybase1.CheckResultFreshness_FRESH {
 			res.err = res.cached.Status
 			res.verifiedHint = res.cached.VerifiedHint
-			m.CDebugf("| Early exit after proofCache hit for %s", sid)
+			m.Debug("| Early exit after proofCache hit for %s", sid)
 			return
 		}
 	}
@@ -1708,7 +1710,7 @@ func (idt *IdentityTable) proofRemoteCheck(m MetaContext, hasPreviousTrack, forc
 	// not to cache it.
 	if ProofErrorIsSoft(res.err) && res.cached != nil && res.cached.Status == nil &&
 		res.cached.Freshness() != keybase1.CheckResultFreshness_RANCID {
-		m.CDebugf("| Got soft error (%s) but returning success (last seen at %s)",
+		m.Debug("| Got soft error (%s) but returning success (last seen at %s)",
 			res.err.Error(), res.cached.Time)
 		res.snoozedErr = res.err
 		res.err = nil
@@ -1716,9 +1718,7 @@ func (idt *IdentityTable) proofRemoteCheck(m MetaContext, hasPreviousTrack, forc
 		return
 	}
 
-	m.CDebugf("| Check status (%s) failed with error: %s", p.ToDebugString(), res.err.Error())
-
-	return
+	m.Debug("| Check status (%s) failed with error: %s", p.ToDebugString(), res.err.Error())
 }
 
 // VerifyReverseSig checks reverse signature using the key provided.

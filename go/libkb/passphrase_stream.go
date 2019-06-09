@@ -122,7 +122,7 @@ func (ps PassphraseStream) PDPKA5KID() (keybase1.KID, error) {
 
 func (ps PassphraseStream) String() string {
 	return fmt.Sprintf("pwh:   %x\nEdDSA: %x\nDH:    %x\nlks:   %x",
-		ps.PWHash(), ps.EdDSASeed(), ps.DHSeed(), ps.LksClientHalf())
+		ps.PWHash(), ps.EdDSASeed(), ps.DHSeed(), ps.LksClientHalf().Bytes())
 }
 
 // Generation returns the generation of this passphrase stream.
@@ -150,4 +150,18 @@ func (ps PassphraseStream) Export() keybase1.PassphraseStream {
 		PassphraseStream: ps.stream,
 		Generation:       int(ps.gen),
 	}
+}
+
+func (ps PassphraseStream) SyncAndCheckIfOutdated(mctx MetaContext) (bool, error) {
+	ss, err := mctx.SyncSecrets()
+	if err != nil {
+		return false, err
+	}
+
+	key, err := ss.FindDevice(mctx.G().Env.GetDeviceID())
+	if err != nil {
+		return false, err
+	}
+
+	return key.PPGen > ps.Generation(), nil
 }

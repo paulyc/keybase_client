@@ -984,6 +984,72 @@ func (e IdentityVisibility) String() string {
 	return ""
 }
 
+type SizedImage struct {
+	Path  string `codec:"path" json:"path"`
+	Width int    `codec:"width" json:"width"`
+}
+
+func (o SizedImage) DeepCopy() SizedImage {
+	return SizedImage{
+		Path:  o.Path,
+		Width: o.Width,
+	}
+}
+
+type OfflineAvailability int
+
+const (
+	OfflineAvailability_NONE        OfflineAvailability = 0
+	OfflineAvailability_BEST_EFFORT OfflineAvailability = 1
+)
+
+func (o OfflineAvailability) DeepCopy() OfflineAvailability { return o }
+
+var OfflineAvailabilityMap = map[string]OfflineAvailability{
+	"NONE":        0,
+	"BEST_EFFORT": 1,
+}
+
+var OfflineAvailabilityRevMap = map[OfflineAvailability]string{
+	0: "NONE",
+	1: "BEST_EFFORT",
+}
+
+func (e OfflineAvailability) String() string {
+	if v, ok := OfflineAvailabilityRevMap[e]; ok {
+		return v
+	}
+	return ""
+}
+
+type ReacjiSkinTone int
+
+func (o ReacjiSkinTone) DeepCopy() ReacjiSkinTone {
+	return o
+}
+
+type UserReacjis struct {
+	TopReacjis []string       `codec:"topReacjis" json:"topReacjis"`
+	SkinTone   ReacjiSkinTone `codec:"skinTone" json:"skinTone"`
+}
+
+func (o UserReacjis) DeepCopy() UserReacjis {
+	return UserReacjis{
+		TopReacjis: (func(x []string) []string {
+			if x == nil {
+				return nil
+			}
+			ret := make([]string, len(x))
+			for i, v := range x {
+				vCopy := v
+				ret[i] = vCopy
+			}
+			return ret
+		})(o.TopReacjis),
+		SkinTone: o.SkinTone.DeepCopy(),
+	}
+}
+
 type CommonInterface interface {
 }
 

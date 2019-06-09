@@ -25,7 +25,8 @@ type mockInboxSource struct {
 
 func (m *mockInboxSource) Read(ctx context.Context, uid gregor1.UID,
 	localizeTyp types.ConversationLocalizerTyp,
-	useLocalData bool, maxLocalize *int, query *chat1.GetInboxLocalQuery, p *chat1.Pagination) (types.Inbox, chan types.AsyncInboxResult, error) {
+	dataSource types.InboxSourceDataSourceTyp, maxLocalize *int, query *chat1.GetInboxLocalQuery,
+	p *chat1.Pagination) (types.Inbox, chan types.AsyncInboxResult, error) {
 	parts := m.partsFn()
 	var convParts []chat1.ConversationLocalParticipant
 	for _, p := range parts {
@@ -50,6 +51,10 @@ type mockStellar struct {
 
 func (m *mockStellar) SendMiniChatPayments(mctx libkb.MetaContext, convID chat1.ConversationID, payments []libkb.MiniChatPayment) (res []libkb.MiniChatPaymentResult, err error) {
 	return m.miniFn(payments)
+}
+
+func (m *mockStellar) KnownCurrencyCodeInstant(context.Context, string) (bool, bool) {
+	return false, false
 }
 
 type mockUpakLoader struct {
@@ -77,11 +82,13 @@ func (m *mockUpakLoader) LookupUsername(ctx context.Context, uid keybase1.UID) (
 }
 
 func TestStellarSender(t *testing.T) {
+	tc := externalstest.SetupTest(t, "stellarsender", 0)
+	defer tc.Cleanup()
+
 	mikeUID := gregor1.UID([]byte{0, 1})
 	patrickUID := gregor1.UID([]byte{0, 2})
 	maxUID := gregor1.UID([]byte{0, 4})
 	convID := chat1.ConversationID([]byte{0, 3})
-	tc := externalstest.SetupTest(t, "stellarsender", 0)
 	ms := mockStellar{}
 	mi := mockInboxSource{}
 	mu := newMockUpakLoader()

@@ -429,6 +429,12 @@ func (f *JSONConfigFile) GetPvlKitFilename() string {
 func (f *JSONConfigFile) GetParamProofKitFilename() string {
 	return f.GetTopLevelString("paramproof_kit")
 }
+func (f *JSONConfigFile) GetExternalURLKitFilename() string {
+	return f.GetTopLevelString("externalurl_kit")
+}
+func (f *JSONConfigFile) GetProveBypass() (bool, bool) {
+	return f.GetBoolAtPath("prove_bypass")
+}
 func (f *JSONConfigFile) GetPinentry() string {
 	res, _ := f.GetStringAtPath("pinentry.path")
 	return res
@@ -542,6 +548,10 @@ func (f *JSONConfigFile) GetGregorURI() string {
 }
 func (f *JSONConfigFile) GetGregorDisabled() (bool, bool) {
 	return f.GetBoolAtPath("push.disabled")
+}
+func (f *JSONConfigFile) GetSecretStorePrimingDisabled() (bool, bool) {
+	// SecretStorePrimingDisabled is only for tests
+	return false, false
 }
 func (f *JSONConfigFile) GetBGIdentifierDisabled() (bool, bool) {
 	return f.GetBoolAtPath("bg_identifier.disabled")
@@ -710,9 +720,16 @@ func (f *JSONConfigFile) GetProxyCACerts() (ret []string, err error) {
 func (f *JSONConfigFile) GetLogFile() string {
 	return f.GetTopLevelString("log_file")
 }
+func (f *JSONConfigFile) GetEKLogFile() string {
+	return f.GetTopLevelString("ek_log_file")
+}
 
 func (f *JSONConfigFile) GetUseDefaultLogFile() (bool, bool) {
 	return f.GetTopLevelBool("use_default_log_file")
+}
+
+func (f *JSONConfigFile) GetUseRootConfigFile() (bool, bool) {
+	return false, false
 }
 
 func (f *JSONConfigFile) GetLogPrefix() string {
@@ -794,6 +811,10 @@ func (f *JSONConfigFile) GetMountDir() string {
 	return f.GetTopLevelString("mountdir")
 }
 
+func (f *JSONConfigFile) GetMountDirDefault() string {
+	return f.GetTopLevelString("mountdirdefault")
+}
+
 func bug3964path(un NormalizedUsername) string {
 	return fmt.Sprintf("maintenance.%s.bug_3964_repair_time", un)
 }
@@ -847,6 +868,38 @@ func (f *JSONConfigFile) GetAttachmentDisableMulti() (bool, bool) {
 
 func (f *JSONConfigFile) GetDisableTeamAuditor() (bool, bool) {
 	return f.GetBoolAtPath("disable_team_auditor")
+}
+
+func (f *JSONConfigFile) GetDisableTeamBoxAuditor() (bool, bool) {
+	return f.GetBoolAtPath("disable_team_box_auditor")
+}
+
+func (f *JSONConfigFile) GetDisableMerkleAuditor() (bool, bool) {
+	return f.GetBoolAtPath("disable_merkle_auditor")
+}
+
+func (f *JSONConfigFile) GetDisableSearchIndexer() (bool, bool) {
+	return f.GetBoolAtPath("disable_search_indexer")
+}
+
+func (f *JSONConfigFile) GetDisableBgConvLoader() (bool, bool) {
+	return f.GetBoolAtPath("disable_bg_conv_loader")
+}
+
+func (f *JSONConfigFile) GetEnableBotLiteMode() (bool, bool) {
+	return f.GetBoolAtPath("enable_bot_lite_mode")
+}
+
+func (f *JSONConfigFile) GetExtraNetLogging() (bool, bool) {
+	return f.GetBoolAtPath("extra_net_logging")
+}
+
+func (f *JSONConfigFile) GetForceLinuxKeyring() (bool, bool) {
+	return f.GetBoolAtPath("force_linux_keyring")
+}
+
+func (f *JSONConfigFile) GetForceSecretStoreFile() (bool, bool) {
+	return f.GetBoolAtPath("force_less_safe_secret_store_file")
 }
 
 func (f *JSONConfigFile) GetChatOutboxStorageEngine() string {

@@ -61,12 +61,20 @@ func (o KeybaseRequestID) DeepCopy() KeybaseRequestID {
 	return o
 }
 
+type AssetCode string
+
+func (o AssetCode) DeepCopy() AssetCode {
+	return o
+}
+
 type Asset struct {
 	Type           string `codec:"type" json:"type"`
 	Code           string `codec:"code" json:"code"`
 	Issuer         string `codec:"issuer" json:"issuer"`
 	VerifiedDomain string `codec:"verifiedDomain" json:"verifiedDomain"`
 	IssuerName     string `codec:"issuerName" json:"issuerName"`
+	Desc           string `codec:"desc" json:"desc"`
+	InfoUrl        string `codec:"infoUrl" json:"infoUrl"`
 }
 
 func (o Asset) DeepCopy() Asset {
@@ -76,6 +84,8 @@ func (o Asset) DeepCopy() Asset {
 		Issuer:         o.Issuer,
 		VerifiedDomain: o.VerifiedDomain,
 		IssuerName:     o.IssuerName,
+		Desc:           o.Desc,
+		InfoUrl:        o.InfoUrl,
 	}
 }
 
@@ -416,6 +426,77 @@ func (o PageCursor) DeepCopy() PageCursor {
 		HorizonCursor: o.HorizonCursor,
 		DirectCursor:  o.DirectCursor,
 		RelayCursor:   o.RelayCursor,
+	}
+}
+
+type AccountMode int
+
+const (
+	AccountMode_NONE   AccountMode = 0
+	AccountMode_USER   AccountMode = 1
+	AccountMode_MOBILE AccountMode = 2
+)
+
+func (o AccountMode) DeepCopy() AccountMode { return o }
+
+var AccountModeMap = map[string]AccountMode{
+	"NONE":   0,
+	"USER":   1,
+	"MOBILE": 2,
+}
+
+var AccountModeRevMap = map[AccountMode]string{
+	0: "NONE",
+	1: "USER",
+	2: "MOBILE",
+}
+
+func (e AccountMode) String() string {
+	if v, ok := AccountModeRevMap[e]; ok {
+		return v
+	}
+	return ""
+}
+
+type Trustline struct {
+	AssetCode AssetCode `codec:"assetCode" json:"assetCode"`
+	Issuer    AccountID `codec:"issuer" json:"issuer"`
+}
+
+func (o Trustline) DeepCopy() Trustline {
+	return Trustline{
+		AssetCode: o.AssetCode.DeepCopy(),
+		Issuer:    o.Issuer.DeepCopy(),
+	}
+}
+
+type PaymentPath struct {
+	SourceAmount      string  `codec:"sourceAmount" json:"sourceAmount"`
+	SourceAmountMax   string  `codec:"sourceAmountMax" json:"sourceAmountMax"`
+	SourceAsset       Asset   `codec:"sourceAsset" json:"sourceAsset"`
+	Path              []Asset `codec:"path" json:"path"`
+	DestinationAmount string  `codec:"destinationAmount" json:"destinationAmount"`
+	DestinationAsset  Asset   `codec:"destinationAsset" json:"destinationAsset"`
+}
+
+func (o PaymentPath) DeepCopy() PaymentPath {
+	return PaymentPath{
+		SourceAmount:    o.SourceAmount,
+		SourceAmountMax: o.SourceAmountMax,
+		SourceAsset:     o.SourceAsset.DeepCopy(),
+		Path: (func(x []Asset) []Asset {
+			if x == nil {
+				return nil
+			}
+			ret := make([]Asset, len(x))
+			for i, v := range x {
+				vCopy := v.DeepCopy()
+				ret[i] = vCopy
+			}
+			return ret
+		})(o.Path),
+		DestinationAmount: o.DestinationAmount,
+		DestinationAsset:  o.DestinationAsset.DeepCopy(),
 	}
 }
 

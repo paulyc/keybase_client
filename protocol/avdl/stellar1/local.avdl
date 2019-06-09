@@ -13,6 +13,11 @@ protocol local {
     string balanceDescription;  // example: "56.0227002 XLM + more"
     string seqno;               // the stellar sequence number for this account
     CurrencyLocal currencyLocal;// user configurable, defaults to USD and related details
+    AccountMode accountMode;    // mobile only vs all devices
+    boolean accountModeEditable;// is this device able to change it
+    boolean deviceReadOnly;     // is account read only for current device (because of mobileOnly mode)
+    boolean isFunded;           // does the account have minimum amount of XLM to exist on the network
+    boolean canSubmitTx;        // does the account have enough XLM to submit a transaction (enough for the fee)
   }
   array<WalletAccountLocal> getWalletAccountsLocal(int sessionID);
   WalletAccountLocal getWalletAccountLocal(int sessionID, AccountID accountID);
@@ -75,7 +80,7 @@ protocol local {
     string amountDescription;       // "1,323.1234567 XLM"
     BalanceDelta delta;             // NONE/INCREASE/DECREASE (e.g. INCREASE for "+ 1,323.1234567 XLM" amount above)
     string worth;                   // "$123.23 CLP", senders intended amount if this was made as a lumens-worth-currency payment
-    string worthAtSendTime;         // "$123.23 CLP", amount in current user's display currency. Set if frontend should show an 
+    string worthAtSendTime;         // "$123.23 CLP", amount in current user's display currency. Set if frontend should show an
                                     // (APPROXIMATELY $X.XX) message i.e. if this is a pure-XLM payment.
 
     string issuerDescription;       // For non-XLM assets: either "Unknown issuer" or domain name
@@ -100,7 +105,22 @@ protocol local {
     string note;                    // secret note
     string noteErr;
 
+    // for path payments:
+    string sourceAmountMax;
+    string sourceAmountActual;
+    Asset sourceAsset;
+
+    // for non-payment txs, multiple ops:
+    boolean isAdvanced;
+    string summaryAdvanced;         // if isAdvanced is true, just show this string
+    array<string> operations;
+
     boolean unread;                 // true if user hasn't seen the payment yet (sourceType STELLAR only)
+
+    string batchID;                 // if payment sent via batch, will contain the batch id
+    boolean fromAirdrop;            // true if payment pertains to a keybase airdrop
+    boolean isInflation;            // true if payment from known inflation source
+    union { null, string } inflationSource; // name of inflation source
   }
 
   record PaymentOrErrorLocal {
@@ -134,7 +154,7 @@ protocol local {
     string amountDescription;       // "1,323.1234567 XLM" - always amount of XLM, even if converted from OutsideCurrency
     BalanceDelta delta;             // NONE/INCREASE/DECREASE (e.g. INCREASE for "+ 1,323.1234567 XLM" amount above)
     string worth;                   // "$123.23 CLP", senders intended amount if this was made as a lumens-worth-currency payment
-    string worthAtSendTime;         // "$123.23 CLP", amount in current user's display currency. Set if frontend should show an 
+    string worthAtSendTime;         // "$123.23 CLP", amount in current user's display currency. Set if frontend should show an
                                     // (APPROXIMATELY $X.XX) message i.e. if this is a pure-XLM payment.
 
     string issuerDescription;       // For non-XLM assets: either "Unknown issuer" or domain name
@@ -159,19 +179,39 @@ protocol local {
     string note;                    // secret note
     string noteErr;
 
+    // for path payments:
+    string sourceAmountMax;
+    string sourceAmountActual;
+    Asset sourceAsset;
+    
+    // for non-payment txs, multiple ops:
+    boolean isAdvanced;
+    string summaryAdvanced;         // if isAdvanced is true, just show this string
+    array<string> operations;       // string summary of each operation in the transaction
+
     string publicNote;              // public memo for the payment
     string publicNoteType;          // public memo type: "text", "id", "hash", "return"
 
     @lint("ignore")
     string externalTxURL;           // link to external web page with tx details
+
+    string batchID;                 // if payment sent via batch, will contain the batch id
+    boolean fromAirdrop;            // true if payment pertains to a keybase airdrop
+    boolean isInflation;            // true if payment from known inflation source
+    union { null, string } inflationSource; // name of inflation source
+    
+    string feeChargedDescription;   // "0.0000100 XLM" the actual fee that was charged for this tx (formatted)
   }
 
   // accountID should be the accountID that you want the details for.
   // This is used for formatting the `amountDescription` to know if it
-  // is a payment that increases or decreases the balance. AccountID
-  // is optional, but then `amountDescription` will not be formatted
-  // with "+" or "-", and also `delta` will always be NONE.
-  PaymentDetailsLocal getPaymentDetailsLocal(int sessionID, union { null, AccountID } accountID, PaymentID id);
+  // is a payment that increases or decreases the balance.
+  PaymentDetailsLocal getPaymentDetailsLocal(int sessionID, AccountID accountID, PaymentID id);
+
+  // only use getGenericPaymentDetailsLocal if you don't know the account ID.
+  // Without account ID, we can't fill in a variety of information and we
+  // can't handle multi-operation transactions.
+  PaymentDetailsLocal getGenericPaymentDetailsLocal(int sessionID, PaymentID id);
 
   record CurrencyLocal {
     string description;  // "USD ($)", "CAD ($)", etc.
@@ -278,7 +318,7 @@ protocol local {
 
     // Optional. Error to show with the amount field.
     // Example: "russel doesn't accept *BTC/Stronghold.com*\nPlease pick another asset."
-    // Example: "Your available to send is *128.4567890 XLM*."
+    // Example: "You only have *128.4567890 XLM* available to send."
     string amountErrMsg;
 
     // Optional. Error to show with the encrypted note field.
@@ -365,6 +405,8 @@ protocol local {
     boolean pending;
   }
 
+  SendPaymentResLocal sendPathLocal(AccountID source, string recipient, PaymentPath path, string note, string publicNote);
+
   // Check but do not send a request.
   //
   // Arguments are optional unless otherwise described.  However, a coherent
@@ -440,6 +482,9 @@ protocol local {
 
     // Formatted amount of either outside currency or stellar lumens.
     string amountDescription; // "$123.23 CAD"
+    string worthAtRequestTime; // "$123.23 CLP", amount in current user's display currency.
+                            // Set if frontend should show an (APPROXIMATELY $X.XX) message.
+
 
     RequestStatus status;
   }
@@ -475,15 +520,52 @@ protocol local {
   }
   InflationDestinationResultLocal getInflationDestinationLocal(int sessionID, AccountID accountID);
 
+  // airdropDetailsLocal returns a json blob of details about the current
+  // airdrop.  If the current airdrop has expired, it will return an
+  // expired error.
+  string airdropDetailsLocal(int sessionID);
+
+  @typedef("string") record AirdropState {}
+
+  record AirdropQualification {
+    string title;
+    string subtitle;
+    boolean valid;
+  }
+
+  record AirdropStatus {
+    AirdropState state;
+    array<AirdropQualification> rows;
+  }
+
+  // airdropStatusLocal returns the user's status for the current airdrop.
+  AirdropStatus airdropStatusLocal(int sessionID);
+
+  // airdropRegisterLocal registers a user for an airdrop.
+  void airdropRegisterLocal(int sessionID, boolean register);
+
+  // Trustline operations:
+  // In addTrustline, limit is optional, if not supplied, max limit will be used.
+  void addTrustlineLocal(int sessionID, AccountID accountID, Trustline trustline, string limit);
+  void deleteTrustlineLocal(int sessionID, AccountID accountID, Trustline trustline);
+  void changeTrustlineLimitLocal(int sessionID, AccountID accountID, Trustline trustline, string limit);
+  array<Balance> getTrustlinesLocal(int sessionID, AccountID accountID);
+
+  record PaymentPathLocal {
+    string sourceDisplay;               // for display purposes
+    string sourceMaxDisplay;
+    string destinationDisplay;
+    AccountID destinationAccount;
+    PaymentPath fullPath;   // pass this back when submitting the payment
+  }
+
+  PaymentPathLocal findPaymentPathLocal(AccountID from, string to, Asset sourceAsset, Asset destinationAsset, string amount);
+
   // -------------------------------------------------------
   // CLI protocol
   // -------------------------------------------------------
 
   array<Balance> balancesLocal(AccountID accountID);
-
-  SendResultCLILocal sendCLILocal(string recipient, string amount, Asset asset, string note,
-                                  string displayAmount, string displayCurrency, boolean forceRelay,
-                                  string publicNote, AccountID fromAccountID);
 
   record SendResultCLILocal {
     KeybaseTransactionID kbTxID;
@@ -491,6 +573,12 @@ protocol local {
     // Relay : tx ID of the funding payment tx
     TransactionID txID;
   }
+
+  SendResultCLILocal sendCLILocal(string recipient, string amount, Asset asset, string note,
+                                  string displayAmount, string displayCurrency, boolean forceRelay,
+                                  string publicNote, AccountID fromAccountID);
+
+  SendResultCLILocal sendPathCLILocal(AccountID source, string recipient, PaymentPath path, string note, string publicNote);
 
   // Claim a relay payment
   // `txID` is the kbTxID of the relay payment. Can also be the txID of the funding tx.
@@ -512,6 +600,15 @@ protocol local {
     union { null, string } displayAmount;
     union { null, string } displayCurrency;
 
+    string sourceAmountMax;
+    string sourceAmountActual;
+    Asset sourceAsset;
+
+    // for non-payment txs, multiple ops:
+    boolean isAdvanced;
+    string summaryAdvanced;         // if isAdvanced is true, just show this string
+    array<string> operations;       // string summary of each operation in the transaction
+
     AccountID fromStellar;
     union { null, AccountID } toStellar;
     union { null, string } fromUsername;
@@ -520,6 +617,11 @@ protocol local {
     string note;
     string noteErr;
     boolean unread;
+
+    // details
+    string publicNote;              // public memo for the payment
+    string publicNoteType;          // public memo type: "text", "id", "hash", "return"
+    string feeChargedDescription;   // "0.0000100 XLM" the actual fee that was charged for this tx (formatted)
   }
   array<PaymentOrErrorCLILocal> recentPaymentsCLILocal(union { null, AccountID } accountID);
 
@@ -537,6 +639,7 @@ protocol local {
     string name;
     array<Balance> balance;
     union { null, OutsideExchangeRate } exchangeRate;
+    AccountMode accountMode;
   }
 
   array<OwnAccountCLILocal> walletGetAccountsCLILocal();
@@ -564,4 +667,116 @@ protocol local {
     union { null, string } username;
   }
   LookupResultCLILocal lookupCLILocal(string name);
+
+  record BatchPaymentError {
+    string message;
+    int code;
+  }
+
+  record BatchPaymentResult {
+    string username;
+    TimeMs startTime;
+    TimeMs submittedTime;
+    TimeMs endTime;
+    TransactionID txID;
+    PaymentStatus status;
+    string statusDescription;
+    union { null, BatchPaymentError } error;
+  }
+
+  record BatchResultLocal {
+    TimeMs startTime;
+    TimeMs preparedTime;
+    TimeMs allSubmittedTime;
+    TimeMs allCompleteTime;
+    TimeMs endTime;
+    array<BatchPaymentResult> payments;
+
+    TimeMs overallDurationMs;
+    TimeMs prepareDurationMs;
+    TimeMs submitDurationMs;
+    TimeMs waitPaymentsDurationMs;
+    TimeMs waitChatDurationMs;
+
+    int countSuccess;
+    int countDirect;
+    int countRelay;
+    int countError;
+    int countPending;
+
+    TimeMs avgDurationMs;
+    TimeMs avgSuccessDurationMs;
+    TimeMs avgDirectDurationMs;
+    TimeMs avgRelayDurationMs;
+    TimeMs avgErrorDurationMs;
+  }
+
+  record BatchPaymentArg {
+    string recipient;
+    string amount;
+    string message;
+  }
+
+  // if useMulti is true, it will create one transaction for all the payments.
+  // if false, it will send them in individual transactions.
+  BatchResultLocal batchLocal(string batchID, int timeoutSecs, array<BatchPaymentArg> payments, boolean useMulti);
+
+  record TxDisplaySummary {
+    AccountID source;
+    int fee;
+    string memo;
+    string memoType;
+    array<string> operations;
+  }
+
+  record ValidateStellarURIResultLocal {
+    string operation;         // currently, 'pay' or 'tx'
+
+    // common fields
+    string originDomain;      // required (by keybase, not by sep7)
+    string message;           // optional
+    @lint("ignore")
+    string callbackURL;       // optional
+
+    // tx fields
+    string xdr;               // required for op tx
+    TxDisplaySummary summary; // use for displaying tx
+
+    // pay fields
+    string recipient;         // required for op pay
+    string amount;            // optional
+    string assetCode;         // optional
+    string assetIssuer;       // required if assetCode exists
+    string memo;              // optional
+    string memoType;          // required if memo exists
+  }
+
+  ValidateStellarURIResultLocal validateStellarURILocal(int sessionID, string inputURI);
+  TransactionID approveTxURILocal(int sessionID, string inputURI);
+  TransactionID approvePayURILocal(int sessionID, string inputURI, string amount, boolean fromCLI);
+  TransactionID approvePathURILocal(int sessionID, string inputURI, PaymentPath fullPath, boolean fromCLI);
+
+  record PartnerUrl {
+    string url;
+    string title;
+    string description;
+    @jsonkey("icon_filename")
+    string iconFilename;
+    @jsonkey("admin_only")
+    boolean adminOnly;
+    string extra; // extra json tbd
+  }
+
+  array<PartnerUrl> getPartnerUrlsLocal(int sessionID);
+
+  // Signs arbitrary Stellar transaction. If no AccountID is provided, it's derived
+  // from the transaction's source account.
+  record SignXdrResult {
+    string singedTx;
+    AccountID accountID;
+    // If also submitting to the network:
+    union { null, string } submitErr;
+    union { null, TransactionID } submitTxID;
+  }
+  SignXdrResult signTransactionXdrLocal(string envelopeXdr, union { null, AccountID } accountID, boolean submit);
 }

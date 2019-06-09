@@ -34,6 +34,26 @@
         {
           "type": "CurrencyLocal",
           "name": "currencyLocal"
+        },
+        {
+          "type": "AccountMode",
+          "name": "accountMode"
+        },
+        {
+          "type": "boolean",
+          "name": "accountModeEditable"
+        },
+        {
+          "type": "boolean",
+          "name": "deviceReadOnly"
+        },
+        {
+          "type": "boolean",
+          "name": "isFunded"
+        },
+        {
+          "type": "boolean",
+          "name": "canSubmitTx"
         }
       ]
     },
@@ -230,8 +250,54 @@
           "name": "noteErr"
         },
         {
+          "type": "string",
+          "name": "sourceAmountMax"
+        },
+        {
+          "type": "string",
+          "name": "sourceAmountActual"
+        },
+        {
+          "type": "Asset",
+          "name": "sourceAsset"
+        },
+        {
+          "type": "boolean",
+          "name": "isAdvanced"
+        },
+        {
+          "type": "string",
+          "name": "summaryAdvanced"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "string"
+          },
+          "name": "operations"
+        },
+        {
           "type": "boolean",
           "name": "unread"
+        },
+        {
+          "type": "string",
+          "name": "batchID"
+        },
+        {
+          "type": "boolean",
+          "name": "fromAirdrop"
+        },
+        {
+          "type": "boolean",
+          "name": "isInflation"
+        },
+        {
+          "type": [
+            null,
+            "string"
+          ],
+          "name": "inflationSource"
         }
       ]
     },
@@ -394,6 +460,33 @@
         },
         {
           "type": "string",
+          "name": "sourceAmountMax"
+        },
+        {
+          "type": "string",
+          "name": "sourceAmountActual"
+        },
+        {
+          "type": "Asset",
+          "name": "sourceAsset"
+        },
+        {
+          "type": "boolean",
+          "name": "isAdvanced"
+        },
+        {
+          "type": "string",
+          "name": "summaryAdvanced"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "string"
+          },
+          "name": "operations"
+        },
+        {
+          "type": "string",
           "name": "publicNote"
         },
         {
@@ -404,6 +497,29 @@
           "type": "string",
           "name": "externalTxURL",
           "lint": "ignore"
+        },
+        {
+          "type": "string",
+          "name": "batchID"
+        },
+        {
+          "type": "boolean",
+          "name": "fromAirdrop"
+        },
+        {
+          "type": "boolean",
+          "name": "isInflation"
+        },
+        {
+          "type": [
+            null,
+            "string"
+          ],
+          "name": "inflationSource"
+        },
+        {
+          "type": "string",
+          "name": "feeChargedDescription"
         }
       ]
     },
@@ -662,6 +778,10 @@
           "name": "amountDescription"
         },
         {
+          "type": "string",
+          "name": "worthAtRequestTime"
+        },
+        {
           "type": "RequestStatus",
           "name": "status"
         }
@@ -720,6 +840,73 @@
         {
           "type": "boolean",
           "name": "self"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "AirdropState",
+      "fields": [],
+      "typedef": "string"
+    },
+    {
+      "type": "record",
+      "name": "AirdropQualification",
+      "fields": [
+        {
+          "type": "string",
+          "name": "title"
+        },
+        {
+          "type": "string",
+          "name": "subtitle"
+        },
+        {
+          "type": "boolean",
+          "name": "valid"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "AirdropStatus",
+      "fields": [
+        {
+          "type": "AirdropState",
+          "name": "state"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "AirdropQualification"
+          },
+          "name": "rows"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "PaymentPathLocal",
+      "fields": [
+        {
+          "type": "string",
+          "name": "sourceDisplay"
+        },
+        {
+          "type": "string",
+          "name": "sourceMaxDisplay"
+        },
+        {
+          "type": "string",
+          "name": "destinationDisplay"
+        },
+        {
+          "type": "AccountID",
+          "name": "destinationAccount"
+        },
+        {
+          "type": "PaymentPath",
+          "name": "fullPath"
         }
       ]
     },
@@ -800,6 +987,33 @@
           "name": "displayCurrency"
         },
         {
+          "type": "string",
+          "name": "sourceAmountMax"
+        },
+        {
+          "type": "string",
+          "name": "sourceAmountActual"
+        },
+        {
+          "type": "Asset",
+          "name": "sourceAsset"
+        },
+        {
+          "type": "boolean",
+          "name": "isAdvanced"
+        },
+        {
+          "type": "string",
+          "name": "summaryAdvanced"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "string"
+          },
+          "name": "operations"
+        },
+        {
           "type": "AccountID",
           "name": "fromStellar"
         },
@@ -842,6 +1056,18 @@
         {
           "type": "boolean",
           "name": "unread"
+        },
+        {
+          "type": "string",
+          "name": "publicNote"
+        },
+        {
+          "type": "string",
+          "name": "publicNoteType"
+        },
+        {
+          "type": "string",
+          "name": "feeChargedDescription"
         }
       ]
     },
@@ -874,6 +1100,10 @@
             "OutsideExchangeRate"
           ],
           "name": "exchangeRate"
+        },
+        {
+          "type": "AccountMode",
+          "name": "accountMode"
         }
       ]
     },
@@ -891,6 +1121,316 @@
             "string"
           ],
           "name": "username"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "BatchPaymentError",
+      "fields": [
+        {
+          "type": "string",
+          "name": "message"
+        },
+        {
+          "type": "int",
+          "name": "code"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "BatchPaymentResult",
+      "fields": [
+        {
+          "type": "string",
+          "name": "username"
+        },
+        {
+          "type": "TimeMs",
+          "name": "startTime"
+        },
+        {
+          "type": "TimeMs",
+          "name": "submittedTime"
+        },
+        {
+          "type": "TimeMs",
+          "name": "endTime"
+        },
+        {
+          "type": "TransactionID",
+          "name": "txID"
+        },
+        {
+          "type": "PaymentStatus",
+          "name": "status"
+        },
+        {
+          "type": "string",
+          "name": "statusDescription"
+        },
+        {
+          "type": [
+            null,
+            "BatchPaymentError"
+          ],
+          "name": "error"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "BatchResultLocal",
+      "fields": [
+        {
+          "type": "TimeMs",
+          "name": "startTime"
+        },
+        {
+          "type": "TimeMs",
+          "name": "preparedTime"
+        },
+        {
+          "type": "TimeMs",
+          "name": "allSubmittedTime"
+        },
+        {
+          "type": "TimeMs",
+          "name": "allCompleteTime"
+        },
+        {
+          "type": "TimeMs",
+          "name": "endTime"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "BatchPaymentResult"
+          },
+          "name": "payments"
+        },
+        {
+          "type": "TimeMs",
+          "name": "overallDurationMs"
+        },
+        {
+          "type": "TimeMs",
+          "name": "prepareDurationMs"
+        },
+        {
+          "type": "TimeMs",
+          "name": "submitDurationMs"
+        },
+        {
+          "type": "TimeMs",
+          "name": "waitPaymentsDurationMs"
+        },
+        {
+          "type": "TimeMs",
+          "name": "waitChatDurationMs"
+        },
+        {
+          "type": "int",
+          "name": "countSuccess"
+        },
+        {
+          "type": "int",
+          "name": "countDirect"
+        },
+        {
+          "type": "int",
+          "name": "countRelay"
+        },
+        {
+          "type": "int",
+          "name": "countError"
+        },
+        {
+          "type": "int",
+          "name": "countPending"
+        },
+        {
+          "type": "TimeMs",
+          "name": "avgDurationMs"
+        },
+        {
+          "type": "TimeMs",
+          "name": "avgSuccessDurationMs"
+        },
+        {
+          "type": "TimeMs",
+          "name": "avgDirectDurationMs"
+        },
+        {
+          "type": "TimeMs",
+          "name": "avgRelayDurationMs"
+        },
+        {
+          "type": "TimeMs",
+          "name": "avgErrorDurationMs"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "BatchPaymentArg",
+      "fields": [
+        {
+          "type": "string",
+          "name": "recipient"
+        },
+        {
+          "type": "string",
+          "name": "amount"
+        },
+        {
+          "type": "string",
+          "name": "message"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "TxDisplaySummary",
+      "fields": [
+        {
+          "type": "AccountID",
+          "name": "source"
+        },
+        {
+          "type": "int",
+          "name": "fee"
+        },
+        {
+          "type": "string",
+          "name": "memo"
+        },
+        {
+          "type": "string",
+          "name": "memoType"
+        },
+        {
+          "type": {
+            "type": "array",
+            "items": "string"
+          },
+          "name": "operations"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "ValidateStellarURIResultLocal",
+      "fields": [
+        {
+          "type": "string",
+          "name": "operation"
+        },
+        {
+          "type": "string",
+          "name": "originDomain"
+        },
+        {
+          "type": "string",
+          "name": "message"
+        },
+        {
+          "type": "string",
+          "name": "callbackURL",
+          "lint": "ignore"
+        },
+        {
+          "type": "string",
+          "name": "xdr"
+        },
+        {
+          "type": "TxDisplaySummary",
+          "name": "summary"
+        },
+        {
+          "type": "string",
+          "name": "recipient"
+        },
+        {
+          "type": "string",
+          "name": "amount"
+        },
+        {
+          "type": "string",
+          "name": "assetCode"
+        },
+        {
+          "type": "string",
+          "name": "assetIssuer"
+        },
+        {
+          "type": "string",
+          "name": "memo"
+        },
+        {
+          "type": "string",
+          "name": "memoType"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "PartnerUrl",
+      "fields": [
+        {
+          "type": "string",
+          "name": "url"
+        },
+        {
+          "type": "string",
+          "name": "title"
+        },
+        {
+          "type": "string",
+          "name": "description"
+        },
+        {
+          "type": "string",
+          "name": "iconFilename",
+          "jsonkey": "icon_filename"
+        },
+        {
+          "type": "boolean",
+          "name": "adminOnly",
+          "jsonkey": "admin_only"
+        },
+        {
+          "type": "string",
+          "name": "extra"
+        }
+      ]
+    },
+    {
+      "type": "record",
+      "name": "SignXdrResult",
+      "fields": [
+        {
+          "type": "string",
+          "name": "singedTx"
+        },
+        {
+          "type": "AccountID",
+          "name": "accountID"
+        },
+        {
+          "type": [
+            null,
+            "string"
+          ],
+          "name": "submitErr"
+        },
+        {
+          "type": [
+            null,
+            "TransactionID"
+          ],
+          "name": "submitTxID"
         }
       ]
     }
@@ -998,10 +1538,20 @@
         },
         {
           "name": "accountID",
-          "type": [
-            null,
-            "AccountID"
-          ]
+          "type": "AccountID"
+        },
+        {
+          "name": "id",
+          "type": "PaymentID"
+        }
+      ],
+      "response": "PaymentDetailsLocal"
+    },
+    "getGenericPaymentDetailsLocal": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
         },
         {
           "name": "id",
@@ -1393,6 +1943,31 @@
       ],
       "response": "SendPaymentResLocal"
     },
+    "sendPathLocal": {
+      "request": [
+        {
+          "name": "source",
+          "type": "AccountID"
+        },
+        {
+          "name": "recipient",
+          "type": "string"
+        },
+        {
+          "name": "path",
+          "type": "PaymentPath"
+        },
+        {
+          "name": "note",
+          "type": "string"
+        },
+        {
+          "name": "publicNote",
+          "type": "string"
+        }
+      ],
+      "response": "SendPaymentResLocal"
+    },
     "buildRequestLocal": {
       "request": [
         {
@@ -1583,6 +2158,137 @@
       ],
       "response": "InflationDestinationResultLocal"
     },
+    "airdropDetailsLocal": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        }
+      ],
+      "response": "string"
+    },
+    "airdropStatusLocal": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        }
+      ],
+      "response": "AirdropStatus"
+    },
+    "airdropRegisterLocal": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "register",
+          "type": "boolean"
+        }
+      ],
+      "response": null
+    },
+    "addTrustlineLocal": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "accountID",
+          "type": "AccountID"
+        },
+        {
+          "name": "trustline",
+          "type": "Trustline"
+        },
+        {
+          "name": "limit",
+          "type": "string"
+        }
+      ],
+      "response": null
+    },
+    "deleteTrustlineLocal": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "accountID",
+          "type": "AccountID"
+        },
+        {
+          "name": "trustline",
+          "type": "Trustline"
+        }
+      ],
+      "response": null
+    },
+    "changeTrustlineLimitLocal": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "accountID",
+          "type": "AccountID"
+        },
+        {
+          "name": "trustline",
+          "type": "Trustline"
+        },
+        {
+          "name": "limit",
+          "type": "string"
+        }
+      ],
+      "response": null
+    },
+    "getTrustlinesLocal": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "accountID",
+          "type": "AccountID"
+        }
+      ],
+      "response": {
+        "type": "array",
+        "items": "Balance"
+      }
+    },
+    "findPaymentPathLocal": {
+      "request": [
+        {
+          "name": "from",
+          "type": "AccountID"
+        },
+        {
+          "name": "to",
+          "type": "string"
+        },
+        {
+          "name": "sourceAsset",
+          "type": "Asset"
+        },
+        {
+          "name": "destinationAsset",
+          "type": "Asset"
+        },
+        {
+          "name": "amount",
+          "type": "string"
+        }
+      ],
+      "response": "PaymentPathLocal"
+    },
     "balancesLocal": {
       "request": [
         {
@@ -1632,6 +2338,31 @@
         {
           "name": "fromAccountID",
           "type": "AccountID"
+        }
+      ],
+      "response": "SendResultCLILocal"
+    },
+    "sendPathCLILocal": {
+      "request": [
+        {
+          "name": "source",
+          "type": "AccountID"
+        },
+        {
+          "name": "recipient",
+          "type": "string"
+        },
+        {
+          "name": "path",
+          "type": "PaymentPath"
+        },
+        {
+          "name": "note",
+          "type": "string"
+        },
+        {
+          "name": "publicNote",
+          "type": "string"
         }
       ],
       "response": "SendResultCLILocal"
@@ -1808,6 +2539,130 @@
         }
       ],
       "response": "LookupResultCLILocal"
+    },
+    "batchLocal": {
+      "request": [
+        {
+          "name": "batchID",
+          "type": "string"
+        },
+        {
+          "name": "timeoutSecs",
+          "type": "int"
+        },
+        {
+          "name": "payments",
+          "type": {
+            "type": "array",
+            "items": "BatchPaymentArg"
+          }
+        },
+        {
+          "name": "useMulti",
+          "type": "boolean"
+        }
+      ],
+      "response": "BatchResultLocal"
+    },
+    "validateStellarURILocal": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "inputURI",
+          "type": "string"
+        }
+      ],
+      "response": "ValidateStellarURIResultLocal"
+    },
+    "approveTxURILocal": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "inputURI",
+          "type": "string"
+        }
+      ],
+      "response": "TransactionID"
+    },
+    "approvePayURILocal": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "inputURI",
+          "type": "string"
+        },
+        {
+          "name": "amount",
+          "type": "string"
+        },
+        {
+          "name": "fromCLI",
+          "type": "boolean"
+        }
+      ],
+      "response": "TransactionID"
+    },
+    "approvePathURILocal": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        },
+        {
+          "name": "inputURI",
+          "type": "string"
+        },
+        {
+          "name": "fullPath",
+          "type": "PaymentPath"
+        },
+        {
+          "name": "fromCLI",
+          "type": "boolean"
+        }
+      ],
+      "response": "TransactionID"
+    },
+    "getPartnerUrlsLocal": {
+      "request": [
+        {
+          "name": "sessionID",
+          "type": "int"
+        }
+      ],
+      "response": {
+        "type": "array",
+        "items": "PartnerUrl"
+      }
+    },
+    "signTransactionXdrLocal": {
+      "request": [
+        {
+          "name": "envelopeXdr",
+          "type": "string"
+        },
+        {
+          "name": "accountID",
+          "type": [
+            null,
+            "AccountID"
+          ]
+        },
+        {
+          "name": "submit",
+          "type": "boolean"
+        }
+      ],
+      "response": "SignXdrResult"
     }
   },
   "namespace": "stellar.1"

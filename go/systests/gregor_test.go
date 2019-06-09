@@ -67,6 +67,7 @@ func TestGregorForwardToElectron(t *testing.T) {
 	tc := setupTest(t, "gregor")
 	defer tc.Cleanup()
 	tc1 := cloneContext(tc)
+	defer tc1.Cleanup()
 
 	svc := service.NewService(tc.G, false)
 	startCh := svc.GetStartChannel()
@@ -178,7 +179,7 @@ func TestGregorForwardToElectron(t *testing.T) {
 	require.NoError(t, err)
 	checkState(state)
 
-	require.NoError(t, client.CtlServiceStop(tc.G))
+	require.NoError(t, CtlStop(tc.G))
 	// If the server failed, it's also an error
 	require.NoError(t, <-stopCh)
 }

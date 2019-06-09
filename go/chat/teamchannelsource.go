@@ -15,59 +15,54 @@ import (
 type TeamChannelSource struct {
 	globals.Contextified
 	utils.DebugLabeler
-	memberStatus []chat1.ConversationMemberStatus
 }
 
 var _ types.TeamChannelSource = (*TeamChannelSource)(nil)
 
 func NewTeamChannelSource(g *globals.Context) *TeamChannelSource {
-	// store this in sorted order so we keep the order consistent for
-	// GetInboxQuery which checks the hash of the query to hit the cache.
-	memberStatus := chat1.AllConversationMemberStatuses()
-	sort.Sort(utils.ByConversationMemberStatus(memberStatus))
 	return &TeamChannelSource{
 		Contextified: globals.NewContextified(g),
 		DebugLabeler: utils.NewDebugLabeler(g.GetLog(), "TeamChannelSource", false),
-		memberStatus: memberStatus,
 	}
 }
 
 func (c *TeamChannelSource) getTLFConversations(ctx context.Context, uid gregor1.UID,
-	teamID chat1.TLFID, topicType chat1.TopicType) (types.Inbox, error) {
-	inbox, err := c.G().InboxSource.ReadUnverified(ctx, uid, true, /* useLocalData */
+	tlfID chat1.TLFID, topicType chat1.TopicType) ([]types.RemoteConversation, error) {
+	inbox, err := c.G().InboxSource.ReadUnverified(ctx, uid, types.InboxSourceDataSourceAll,
 		&chat1.GetInboxQuery{
-			TlfID:            &teamID,
+			TlfID:            &tlfID,
 			TopicType:        &topicType,
 			SummarizeMaxMsgs: false,
-			MemberStatus:     c.memberStatus,
+			MemberStatus:     chat1.AllConversationMemberStatuses(),
 			Existences:       []chat1.ConversationExistence{chat1.ConversationExistence_ACTIVE},
+			SkipBgLoads:      true,
 		}, nil /* pagination */)
-	return inbox, err
+	return inbox.ConvsUnverified, err
 }
 
 func (c *TeamChannelSource) GetChannelsFull(ctx context.Context, uid gregor1.UID,
-	teamID chat1.TLFID, topicType chat1.TopicType) (res []chat1.ConversationLocal, err error) {
-	defer c.Trace(ctx, func() error { return err }, "GetChannelsFull")()
+	tlfID chat1.TLFID, topicType chat1.TopicType) (res []chat1.ConversationLocal, err error) {
+	defer c.Trace(ctx, func() error { return err },
+		fmt.Sprintf("GetChannelsFull: tlfID: %v, topicType: %v", tlfID, topicType))()
 
-	inbox, err := c.getTLFConversations(ctx, uid, teamID, topicType)
+	rcs, err := c.getTLFConversations(ctx, uid, tlfID, topicType)
 	if err != nil {
 		return nil, err
 	}
-	convs, _, err := c.G().InboxSource.Localize(ctx, uid, inbox.ConvsUnverified,
-		types.ConversationLocalizerBlocking)
+	convs, _, err := c.G().InboxSource.Localize(ctx, uid, rcs, types.ConversationLocalizerBlocking)
 	if err != nil {
 		c.Debug(ctx, "GetChannelsFull: failed to localize conversations: %s", err.Error())
 		return nil, err
 	}
-	convs = append(convs, inbox.Convs...)
 	sort.Sort(utils.ConvLocalByTopicName(convs))
 	c.Debug(ctx, "GetChannelsFull: found %d convs", len(convs))
 	return convs, nil
 }
 
 func (c *TeamChannelSource) GetChannelsTopicName(ctx context.Context, uid gregor1.UID,
-	teamID chat1.TLFID, topicType chat1.TopicType) (res []chat1.ChannelNameMention, err error) {
-	defer c.Trace(ctx, func() error { return err }, "GetChannelsTopicName")()
+	tlfID chat1.TLFID, topicType chat1.TopicType) (res []chat1.ChannelNameMention, err error) {
+	defer c.Trace(ctx, func() error { return err },
+		fmt.Sprintf("GetChannelsTopicName: tlfID: %v, topicType: %v", tlfID, topicType))()
 
 	addValidMetadataMsg := func(convID chat1.ConversationID, msg chat1.MessageUnboxed) {
 		if !msg.IsValid() {
@@ -92,11 +87,11 @@ func (c *TeamChannelSource) GetChannelsTopicName(ctx context.Context, uid gregor
 		})
 	}
 
-	inbox, err := c.getTLFConversations(ctx, uid, teamID, topicType)
+	convs, err := c.getTLFConversations(ctx, uid, tlfID, topicType)
 	if err != nil {
 		return nil, err
 	}
-	for _, rc := range inbox.ConvsUnverified {
+	for _, rc := range convs {
 		conv := rc.Conv
 		msg, err := conv.GetMaxMessage(chat1.MessageType_METADATA)
 		if err != nil {
@@ -114,21 +109,13 @@ func (c *TeamChannelSource) GetChannelsTopicName(ctx context.Context, uid gregor
 		}
 		addValidMetadataMsg(conv.GetConvID(), unboxeds[0])
 	}
-	for _, conv := range inbox.Convs {
-		msg, err := conv.GetMaxMessage(chat1.MessageType_METADATA)
-		if err != nil {
-			c.Debug(ctx, "GetChannelsTopicName: failed get metadata max message for: convID: %s err: %s",
-				conv.GetConvID(), err)
-			continue
-		}
-		addValidMetadataMsg(conv.GetConvID(), msg)
-	}
 	return res, nil
 }
 
 func (c *TeamChannelSource) GetChannelTopicName(ctx context.Context, uid gregor1.UID,
 	tlfID chat1.TLFID, topicType chat1.TopicType, convID chat1.ConversationID) (res string, err error) {
-	defer c.Trace(ctx, func() error { return err }, "GetChannelTopicName")()
+	defer c.Trace(ctx, func() error { return err },
+		fmt.Sprintf("GetChannelTopicName: tlfID: %v, topicType: %v, convID: %v", tlfID, topicType, convID))()
 
 	convs, err := c.GetChannelsTopicName(ctx, uid, tlfID, topicType)
 	if err != nil {

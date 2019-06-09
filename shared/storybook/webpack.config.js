@@ -1,4 +1,3 @@
-// @noflow
 const webpack = require('webpack')
 const path = require('path')
 // you can use this file to add your custom webpack plugins, loaders and anything you like.
@@ -14,7 +13,7 @@ const fileLoaderRule = {
 
 module.exports = (storybookBaseConfig, configType) => {
   storybookBaseConfig.resolve = {
-    extensions: ['.desktop.js', '.js', '.jsx', '.json', '.flow'],
+    extensions: ['.desktop.js', '.js', '.jsx', '.json', '.flow', '.ts', '.tsx'],
   }
 
   storybookBaseConfig.plugins.push(

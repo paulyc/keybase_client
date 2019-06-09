@@ -7,6 +7,7 @@ import (
 )
 
 type ChatContext struct {
+	CtxFactory          types.ContextFactory      // source of verified user info and crypt keys
 	InboxSource         types.InboxSource         // source of remote inbox entries for chat
 	ConvSource          types.ConversationSource  // source of remote message bodies for chat
 	MessageDeliverer    types.MessageDeliverer    // background message delivery service
@@ -26,7 +27,10 @@ type ChatContext struct {
 	StellarLoader       types.StellarLoader       // stellar payment/request loader
 	StellarSender       types.StellarSender       // stellar in-chat payment sender
 	StellarPushHandler  types.OobmHandler
-	Unfurler            types.Unfurler // unfurl messages with URLs
+	Unfurler            types.Unfurler                   // unfurl messages with URLs
+	CommandsSource      types.ConversationCommandsSource // source for / commands for conversations
+	CoinFlipManager     types.CoinFlipManager            // manage /flip games
+	TeamMentionLoader   types.TeamMentionLoader          // load potential team mentions
 }
 
 type Context struct {
@@ -61,6 +65,10 @@ func (c *Context) MetaContext(ctx context.Context) libkb.MetaContext {
 
 func (c Contextified) G() *Context {
 	return c.gc
+}
+
+func (c Contextified) MetaContext(ctx context.Context) libkb.MetaContext {
+	return libkb.NewMetaContext(ctx, c.G().ExternalG())
 }
 
 type ChatContextified struct {

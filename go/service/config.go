@@ -1,4 +1,4 @@
-// Copyright 2015 Keybase, Inc. All rights reserved. Use of
+// Copyright 2019 Keybase, Inc. All rights reserved. Use of
 // this source code is governed by the included BSD license.
 
 package service
@@ -17,6 +17,7 @@ import (
 	"github.com/keybase/client/go/install"
 	"github.com/keybase/client/go/libkb"
 	keybase1 "github.com/keybase/client/go/protocol/keybase1"
+	"github.com/keybase/client/go/status"
 	"github.com/keybase/go-framed-msgpack-rpc/rpc"
 	jsonw "github.com/keybase/go-jsonw"
 )
@@ -39,12 +40,9 @@ func NewConfigHandler(xp rpc.Transporter, i libkb.ConnectionID, g *libkb.GlobalC
 	}
 }
 
-func (h ConfigHandler) GetCurrentStatus(ctx context.Context, sessionID int) (res keybase1.GetCurrentStatusRes, err error) {
-	var cs libkb.CurrentStatus
-	if cs, err = libkb.GetCurrentStatus(ctx, h.G()); err == nil {
-		res = cs.Export()
-	}
-	return
+func (h ConfigHandler) GetCurrentStatus(ctx context.Context, sessionID int) (res keybase1.CurrentStatus, err error) {
+	mctx := libkb.NewMetaContext(ctx, h.G())
+	return status.GetCurrentStatus(mctx)
 }
 
 func (h ConfigHandler) GetValue(_ context.Context, path string) (ret keybase1.ConfigValue, err error) {
@@ -114,8 +112,41 @@ func (h ConfigHandler) ClearValue(_ context.Context, path string) error {
 	return nil
 }
 
-func (h ConfigHandler) GetExtendedStatus(ctx context.Context, sessionID int) (res keybase1.ExtendedStatus, err error) {
-	return libkb.GetExtendedStatus(libkb.NewMetaContext(ctx, h.G()))
+func (h ConfigHandler) GetClientStatus(ctx context.Context, sessionID int) (res []keybase1.ClientStatus, err error) {
+	mctx := libkb.NewMetaContext(ctx, h.G())
+	defer mctx.TraceTimed("GetClientStatus", func() error { return err })()
+	return libkb.GetClientStatus(mctx), nil
+}
+
+func (h ConfigHandler) GetConfig(ctx context.Context, sessionID int) (res keybase1.Config, err error) {
+	mctx := libkb.NewMetaContext(ctx, h.G())
+	defer mctx.TraceTimed("GetConfig", func() error { return err })()
+	forkType := keybase1.ForkType_NONE
+	if h.svc != nil {
+		forkType = h.svc.ForkType
+	}
+	return status.GetConfig(mctx, forkType)
+}
+
+func (h ConfigHandler) GetFullStatus(ctx context.Context, sessionID int) (res *keybase1.FullStatus, err error) {
+	mctx := libkb.NewMetaContext(ctx, h.G())
+	defer mctx.TraceTimed("GetFullStatus", func() error { return err })()
+	return status.GetFullStatus(mctx)
+}
+
+func (h ConfigHandler) LogSend(ctx context.Context, arg keybase1.LogSendArg) (res keybase1.LogSendID, err error) {
+	mctx := libkb.NewMetaContext(ctx, h.G())
+	defer mctx.TraceTimed("LogSend", func() error { return err })()
+
+	fstatus, err := status.GetFullStatus(mctx)
+	if err != nil {
+		return "", err
+	}
+	statusJSON := status.MergeStatusJSON(fstatus, "fstatus", arg.StatusJSON)
+
+	logSendContext := status.NewLogSendContext(h.G(), fstatus, statusJSON, arg.Feedback)
+	return logSendContext.LogSend(arg.SendLogs, status.LogSendDefaultBytesDesktop,
+		false /* mergeExtendedStatus */)
 }
 
 func (h ConfigHandler) GetAllProvisionedUsernames(ctx context.Context, sessionID int) (res keybase1.AllProvisionedUsernames, err error) {
@@ -148,59 +179,6 @@ func (h ConfigHandler) GetAllProvisionedUsernames(ctx context.Context, sessionID
 		ProvisionedUsernames: provisionedUsernames,
 		HasProvisionedUser:   hasProvisionedUser,
 	}, nil
-}
-
-func (h ConfigHandler) GetConfig(_ context.Context, sessionID int) (keybase1.Config, error) {
-	var c keybase1.Config
-
-	c.ServerURI = h.G().Env.GetServerURI()
-	c.RunMode = string(h.G().Env.GetRunMode())
-	var err error
-	c.SocketFile, err = h.G().Env.GetSocketBindFile()
-	if err != nil {
-		return c, err
-	}
-
-	gpg := h.G().GetGpgClient()
-	canExec, err := gpg.CanExec()
-	if err == nil {
-		c.GpgExists = canExec
-		c.GpgPath = gpg.Path()
-	}
-
-	c.Version = libkb.VersionString()
-	c.VersionShort = libkb.Version
-
-	var v []string
-	libkb.VersionMessage(func(s string) {
-		v = append(v, s)
-	})
-	c.VersionFull = strings.Join(v, "\n")
-
-	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
-	if err == nil {
-		c.Path = dir
-	} else {
-		h.G().Log.Warning("Failed to get service path: %s", err)
-	}
-
-	realpath, err := libkb.CurrentBinaryRealpath()
-	if err == nil {
-		c.BinaryRealpath = realpath
-	} else {
-		h.G().Log.Warning("Failed to get service realpath: %s", err)
-	}
-
-	c.ConfigPath = h.G().Env.GetConfigFilename()
-	c.Label = h.G().Env.GetLabel()
-	if h.svc != nil {
-		if h.svc.ForkType == keybase1.ForkType_AUTO {
-			c.IsAutoForked = true
-		}
-		c.ForkType = h.svc.ForkType
-	}
-
-	return c, nil
 }
 
 func (h ConfigHandler) SetUserConfig(ctx context.Context, arg keybase1.SetUserConfigArg) (err error) {
@@ -256,7 +234,7 @@ func mergeIntoPath(g *libkb.GlobalContext, p2 string) error {
 
 func (h ConfigHandler) HelloIAm(_ context.Context, arg keybase1.ClientDetails) error {
 	tmp := fmt.Sprintf("%v", arg.Argv)
-	re := regexp.MustCompile(`\b(chat|encrypt|git|accept-invite|wallet\s+send|wallet\s+import)\b`)
+	re := regexp.MustCompile(`\b(chat|encrypt|git|accept-invite|wallet\s+send|wallet\s+import|passphrase\s+check)\b`)
 	if mtch := re.FindString(tmp); len(mtch) > 0 {
 		arg.Argv = []string{arg.Argv[0], mtch, "(redacted)"}
 	}
@@ -324,7 +302,7 @@ func (h ConfigHandler) SetRememberPassphrase(ctx context.Context, arg keybase1.S
 		return err
 	}
 	if remember == arg.Remember {
-		m.CDebugf("SetRememberPassphrase: no change necessary (remember = %v)", remember)
+		m.Debug("SetRememberPassphrase: no change necessary (remember = %v)", remember)
 		return nil
 	}
 
@@ -337,11 +315,52 @@ func (h ConfigHandler) SetRememberPassphrase(ctx context.Context, arg keybase1.S
 
 	// replace the secret store
 	if err := h.G().ReplaceSecretStore(ctx); err != nil {
-		m.CDebugf("error replacing secret store for SetRememberPassphrase(%v): %s", arg.Remember, err)
+		m.Debug("error replacing secret store for SetRememberPassphrase(%v): %s", arg.Remember, err)
 		return err
 	}
 
-	m.CDebugf("SetRememberPassphrase(%v) success", arg.Remember)
+	m.Debug("SetRememberPassphrase(%v) success", arg.Remember)
 
 	return nil
+}
+
+type rawGetPkgCheck struct {
+	Status libkb.AppStatus      `json:"status"`
+	Res    keybase1.UpdateInfo2 `json:"res"`
+}
+
+func (r *rawGetPkgCheck) GetAppStatus() *libkb.AppStatus {
+	return &r.Status
+}
+
+func (h ConfigHandler) GetUpdateInfo2(ctx context.Context, arg keybase1.GetUpdateInfo2Arg) (res keybase1.UpdateInfo2, err error) {
+	m := libkb.NewMetaContext(ctx, h.G())
+
+	var version string
+	var platform string
+
+	if arg.Platform != nil {
+		platform = *arg.Platform
+	} else {
+		platform = libkb.GetPlatformString()
+	}
+	if arg.Version != nil {
+		version = *arg.Version
+	} else {
+		version = libkb.VersionString()
+	}
+
+	apiArg := libkb.APIArg{
+		Endpoint: "pkg/check",
+		Args: libkb.HTTPArgs{
+			"version":  libkb.S{Val: version},
+			"platform": libkb.S{Val: platform},
+		},
+		RetryCount: 3,
+	}
+	var raw rawGetPkgCheck
+	if err = m.G().API.GetDecode(m, apiArg, &raw); err != nil {
+		return res, err
+	}
+	return raw.Res, nil
 }

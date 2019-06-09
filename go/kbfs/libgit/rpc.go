@@ -8,9 +8,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/keybase/client/go/kbfs/data"
 	"github.com/keybase/client/go/kbfs/kbfsmd"
 	"github.com/keybase/client/go/kbfs/libkbfs"
 	"github.com/keybase/client/go/kbfs/tlf"
+	"github.com/keybase/client/go/kbfs/tlfhandle"
 	"github.com/keybase/client/go/logger"
 	"github.com/keybase/client/go/protocol/keybase1"
 	"github.com/pkg/errors"
@@ -41,14 +43,14 @@ var _ keybase1.KBFSGitInterface = (*RPCHandler)(nil)
 
 func (rh *RPCHandler) waitForJournal(
 	ctx context.Context, gitConfig libkbfs.Config,
-	h *libkbfs.TlfHandle) error {
+	h *tlfhandle.Handle) error {
 	err := CleanOldDeletedReposTimeLimited(ctx, gitConfig, h)
 	if err != nil {
 		return err
 	}
 
 	rootNode, _, err := gitConfig.KBFSOps().GetOrCreateRootNode(
-		ctx, h, libkbfs.MasterBranch)
+		ctx, h, data.MasterBranch)
 	if err != nil {
 		return err
 	}
@@ -58,13 +60,13 @@ func (rh *RPCHandler) waitForJournal(
 		return err
 	}
 
-	jServer, err := libkbfs.GetJournalServer(gitConfig)
+	jManager, err := libkbfs.GetJournalManager(gitConfig)
 	if err != nil {
 		rh.log.CDebugf(ctx, "No journal server: %+v", err)
 		return nil
 	}
 
-	_, err = jServer.JournalStatus(rootNode.GetFolderBranch().Tlf)
+	_, err = jManager.JournalStatus(rootNode.GetFolderBranch().Tlf)
 	if err != nil {
 		rh.log.CDebugf(ctx, "No journal: %+v", err)
 		return nil
@@ -74,14 +76,14 @@ func (rh *RPCHandler) waitForJournal(
 	// revision, to make sure that no partial states of the bare repo
 	// are seen by other readers of the TLF.  It also waits for any
 	// necessary conflict resolution to complete.
-	err = jServer.FinishSingleOp(ctx,
+	err = jManager.FinishSingleOp(ctx,
 		rootNode.GetFolderBranch().Tlf, nil, keybase1.MDPriorityGit)
 	if err != nil {
 		return err
 	}
 
 	// Make sure that everything is truly flushed.
-	status, err := jServer.JournalStatus(rootNode.GetFolderBranch().Tlf)
+	status, err := jManager.JournalStatus(rootNode.GetFolderBranch().Tlf)
 	if err != nil {
 		return err
 	}
@@ -96,7 +98,7 @@ func (rh *RPCHandler) waitForJournal(
 func (rh *RPCHandler) getHandleAndConfig(
 	ctx context.Context, folder keybase1.Folder) (
 	newCtx context.Context, gitConfigRet libkbfs.Config,
-	tlfHandle *libkbfs.TlfHandle, tempDirRet string, err error) {
+	tlfHandle *tlfhandle.Handle, tempDirRet string, err error) {
 	newCtx, gitConfig, tempDir, err := getNewConfig(
 		ctx, rh.config, rh.kbCtx, rh.kbfsInitParams, rh.log)
 	if err != nil {
@@ -117,7 +119,7 @@ func (rh *RPCHandler) getHandleAndConfig(
 	// Use `gitConfig`, rather than `rh.config`, to make sure the
 	// journal is created under the right journal server.
 	tlfHandle, err = libkbfs.GetHandleFromFolderNameAndType(
-		ctx, gitConfig.KBPKI(), gitConfig.MDOps(), folder.Name,
+		ctx, gitConfig.KBPKI(), gitConfig.MDOps(), gitConfig, folder.Name,
 		tlf.TypeFromFolderType(folder.FolderType))
 	if err != nil {
 		return nil, nil, nil, "", err

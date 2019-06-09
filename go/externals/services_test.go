@@ -19,7 +19,7 @@ func TestLoadParamServices(t *testing.T) {
 	entry, err := tc.G.GetParamProofStore().GetLatestEntry(m)
 	require.NoError(t, err)
 
-	config, err := proofServices.parseServerConfig(entry)
+	config, err := proofServices.parseServerConfig(m, entry)
 	require.NoError(t, err)
 	require.NotNil(t, config.ProofConfigs)
 	require.NotNil(t, config.DisplayConfigs)
@@ -44,9 +44,6 @@ func TestLoadParamServices(t *testing.T) {
 		Max: 20,
 	}, gubbleConf.UsernameConfig)
 	require.NotZero(t, len(gubbleConf.BrandColor))
-	require.NotNil(t, gubbleConf.Logo)
-	require.NotZero(t, len(gubbleConf.Logo.SvgBlack))
-	require.NotZero(t, len(gubbleConf.Logo.SvgFull))
 	require.NotZero(t, len(gubbleConf.DisplayName))
 	require.NotZero(t, len(gubbleConf.Description))
 
@@ -54,7 +51,7 @@ func TestLoadParamServices(t *testing.T) {
 	gubbleRoot := fmt.Sprintf("%s/_/gubble_universe/gubble_social", serverURI)
 	gubbleAPIRoot := fmt.Sprintf("%s/_/api/1.0/gubble_universe/gubble_social", serverURI)
 	require.Equal(t, fmt.Sprintf("%s%s", gubbleRoot, "/%{username}"), gubbleConf.ProfileUrl)
-	require.Equal(t, fmt.Sprintf("%s%s", gubbleRoot, "?kb_username=%{kb_username}&sig_hash=%{sig_hash}&kb_ua=%{kb_ua}"), gubbleConf.PrefillUrl)
+	require.Equal(t, fmt.Sprintf("%s%s", gubbleRoot, "?kb_username=%{kb_username}&username=%{username}&sig_hash=%{sig_hash}&kb_ua=%{kb_ua}"), gubbleConf.PrefillUrl)
 	require.Equal(t, fmt.Sprintf("%s%s", gubbleAPIRoot, "/%{username}/proofs.json"), gubbleConf.CheckUrl)
 
 	require.Equal(t, []keybase1.SelectorEntry{

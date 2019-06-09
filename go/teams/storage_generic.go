@@ -3,6 +3,7 @@ package teams
 import (
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 
 	lru "github.com/hashicorp/golang-lru"
@@ -38,7 +39,7 @@ func (s *storageGeneric) put(mctx libkb.MetaContext, state teamDataGeneric) {
 
 	err := s.disk.put(mctx, state)
 	if err != nil {
-		mctx.CWarningf("teams.Storage#Put err: %v", err)
+		mctx.Warning("teams.Storage#Put err: %v", err)
 	}
 }
 
@@ -62,18 +63,10 @@ func (s *storageGeneric) get(mctx libkb.MetaContext, teamID keybase1.TeamID, pub
 		return res
 	}
 	if err != nil {
-		mctx.CDebugf("teams.Storage#Get(%v) disk err: %v", teamID, err)
+		mctx.Debug("teams.Storage#Get(%v) disk err: %v", teamID, err)
 	}
 	mctx.VLogf(libkb.VLog0, "teams.Storage#Get(%v) missed (%s)", teamID, s.description)
 	return nil
-}
-
-func (s *storageGeneric) Delete(mctx libkb.MetaContext, teamID keybase1.TeamID, public bool) error {
-	s.Lock()
-	defer s.Unlock()
-
-	s.mem.delete(mctx, teamID, public)
-	return s.disk.delete(mctx, teamID, public)
 }
 
 // Clear the in-memory storage.
@@ -124,7 +117,7 @@ func (s *diskStorageGeneric) put(mctx libkb.MetaContext, state teamDataGeneric) 
 	defer s.Unlock()
 
 	if !mctx.ActiveDevice().Valid() && !state.IsPublic() {
-		mctx.CDebugf("skipping team store since user is logged out")
+		mctx.Debug("skipping team store since user is logged out")
 		return nil
 	}
 
@@ -225,7 +218,7 @@ func (s *memoryStorageGeneric) get(mctx libkb.MetaContext, teamID keybase1.TeamI
 	}
 	state, ok := untyped.(teamDataGeneric)
 	if !ok {
-		mctx.CWarningf("Team MemoryStorage got bad type from lru: %T", untyped)
+		mctx.Warning("Team MemoryStorage got bad type from lru: %T", untyped)
 		return nil
 	}
 	return state
@@ -282,3 +275,17 @@ func (d LameSecretUI) GetPassphrase(pinentry keybase1.GUIEntryArg, terminal *key
 }
 
 var getLameSecretUI = func() libkb.SecretUI { return LameSecretUI{} }
+
+// --------------------------------------------------
+
+// ParseTeamIDDBKey takes an tid:-style key (used by FTL and slow team loader)
+// and returns a regular team id. We can safely strip away the |pub marker
+// because the publicness of a team is encoded in its ID.
+func ParseTeamIDDBKey(s string) (teamID keybase1.TeamID, err error) {
+	if !strings.HasPrefix(s, "tid:") {
+		return "", fmt.Errorf("does not start with team id prefix")
+	}
+	s = strings.TrimPrefix(s, "tid:")
+	s = strings.TrimSuffix(s, "|pub")
+	return keybase1.TeamID(s), nil
+}

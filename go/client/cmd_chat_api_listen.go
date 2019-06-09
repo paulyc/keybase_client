@@ -21,22 +21,17 @@ import (
 type CmdChatAPIListen struct {
 	libkb.Contextified
 
-	// Print exploding messages? false by default. We want API consumer to make
-	// a conscious choice that they want to process exploding messages, which
-	// depending on their use case might require extra care to keep secrecy of
-	// chat participants.
-	showExploding bool
-
 	showLocal       bool
+	hideExploding   bool
 	subscribeDev    bool
 	subscribeWallet bool
+	channelFilters  []ChatChannel
 }
 
 func newCmdChatAPIListen(cl *libcmdline.CommandLine, g *libkb.GlobalContext) cli.Command {
 	return cli.Command{
-		Name: "api-listen",
-		// No "Usage" field makes it hidden in command list.
-		Description: "Listen and print incoming chat actions in JSON format",
+		Name:  "api-listen",
+		Usage: "Listen and print incoming chat actions in JSON format",
 		Action: func(c *cli.Context) {
 			cl.ChooseCommand(&CmdChatAPIListen{
 				Contextified: libkb.NewContextified(g),
@@ -46,12 +41,12 @@ func newCmdChatAPIListen(cl *libcmdline.CommandLine, g *libkb.GlobalContext) cli
 		},
 		Flags: []cli.Flag{
 			cli.BoolFlag{
-				Name:  "exploding",
-				Usage: "Show exploding messages (skipped by default)",
-			},
-			cli.BoolFlag{
 				Name:  "local",
 				Usage: "Show local messages (skipped by default)",
+			},
+			cli.BoolFlag{
+				Name:  "hide-exploding",
+				Usage: "Hide exploding messages",
 			},
 			cli.BoolFlag{
 				Name:  "dev",
@@ -61,15 +56,71 @@ func newCmdChatAPIListen(cl *libcmdline.CommandLine, g *libkb.GlobalContext) cli
 				Name:  "wallet",
 				Usage: "Subscribe to notifications for wallet events",
 			},
+			cli.StringFlag{
+				Name:  "filter-channel",
+				Usage: "Only show notifications for specified (one) channel.",
+			},
+			cli.StringFlag{
+				Name:  "filter-channels",
+				Usage: "Only show notifications for specified list of channels.",
+			},
 		},
+		Description: `"keybase chat api-listen" is a command that will print incoming chat messages or
+   wallet notifications until it's exited. Messages are printed to standard output in
+   a JSON format similar to the format used in "keybase chat api" command.
+
+   For chat messages, all messages will be relayed by default. Filtering can be enabled using
+   --filter-channel or --filter-channels flags that take JSON arguments.
+
+   Examples:
+
+   Only show messages from user conversation "alice,bob,charlie", and from
+   "all_things_crypto" team channel #core:
+
+      keybase chat api-listen --filter-channels '[{"name":"alice,bob,charlie"}, {"name":"all_things_crypto", "topic_name": "core", "members_type": "team"}]'
+
+   Only show messages from "alice,bob" user conversation:
+
+      keybase chat api-listen --filter-channel '{"name":"alice,bob"}'
+`,
 	}
 }
 
 func (c *CmdChatAPIListen) ParseArgv(ctx *cli.Context) error {
-	c.showExploding = ctx.Bool("exploding")
+	if err := c.parseFilterChannelArgs(ctx); err != nil {
+		return err
+	}
+
+	c.hideExploding = ctx.Bool("hide-exploding")
 	c.showLocal = ctx.Bool("local")
 	c.subscribeDev = ctx.Bool("dev")
 	c.subscribeWallet = ctx.Bool("wallet")
+
+	return nil
+}
+
+func (c *CmdChatAPIListen) parseFilterChannelArgs(ctx *cli.Context) error {
+	if chs := ctx.String("filter-channels"); chs != "" {
+		if err := json.Unmarshal([]byte(chs), &c.channelFilters); err != nil {
+			return err
+		}
+	}
+
+	if ch := ctx.String("filter-channel"); ch != "" {
+		var channel ChatChannel
+		if err := json.Unmarshal([]byte(ch), &channel); err != nil {
+			return err
+		}
+		c.channelFilters = append(c.channelFilters, channel)
+	}
+
+	for _, v := range c.channelFilters {
+		if !v.Valid() {
+			str, _ := json.Marshal(v)
+			return fmt.Errorf("Channel filter not valid: %s", str)
+		}
+	}
+
 	return nil
 }
 
@@ -85,13 +136,29 @@ func sendPing(cli keybase1.SessionClient) error {
 	return cli.SessionPing(ctx)
 }
 
+func (c *CmdChatAPIListen) ErrWriteLn(format string, obj ...interface{}) {
+	c.G().UI.GetTerminalUI().ErrorWriter().Write([]byte(fmt.Sprintf(format, obj...) + "\n"))
+}
+
 func (c *CmdChatAPIListen) Run() error {
 	sessionClient, err := GetSessionClient(c.G())
 	if err != nil {
 		return err
 	}
 
-	chatDisplay := newChatNotificationDisplay(c.G(), c.showLocal, c.showExploding)
+	chatDisplay := newChatNotificationDisplay(c.G(), c.showLocal, c.hideExploding)
+
+	if err := chatDisplay.setupFilters(context.TODO(), c.channelFilters); err != nil {
+		return err
+	}
+
+	if filterLen := len(chatDisplay.filtersNormalized); filterLen > 0 {
+		c.ErrWriteLn("Message filtering is active with %d filters", filterLen)
+		for i, v := range chatDisplay.filtersNormalized {
+			c.ErrWriteLn("filter %d: %+v", i, v)
+		}
+	}
+
 	protocols := []rpc.Protocol{
 		chat1.NotifyChatProtocol(chatDisplay),
 	}
@@ -116,8 +183,8 @@ func (c *CmdChatAPIListen) Run() error {
 		return err
 	}
 	errWriter := c.G().UI.GetTerminalUI().ErrorWriter()
-	errWriter.Write([]byte(fmt.Sprintf("Listening for chat notifications. Config: showExploding: %v, showLocal: %v, subscribeDevChannels: %v\n",
-		c.showExploding, c.showLocal, c.subscribeDev)))
+	errWriter.Write([]byte(fmt.Sprintf("Listening for chat notifications. Config: hideExploding: %v, showLocal: %v, subscribeDevChannels: %v\n",
+		c.hideExploding, c.showLocal, c.subscribeDev)))
 	if c.subscribeWallet {
 		errWriter.Write([]byte("Listening for wallet notifications\n"))
 	}

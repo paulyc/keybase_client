@@ -176,6 +176,9 @@
   if (!p.absolutePath) {
     return NO;
   }
+  if ([KBFSUtils checkIfPathIsFishy:path]) {
+    return NO;
+  }
   NSArray *a = [p componentsSeparatedByString:@"/"];
   if (a.count != 3) {
     return NO;
@@ -238,7 +241,7 @@
     NSString *nsRequirement = [NSString stringWithFormat:@"anchor apple generic %@ and (certificate leaf[field.1.2.840.113635.100.6.1.9] /* exists */ or certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"99229SGT5K\")", identifier];
 
     SecRequirementCreateWithString((__bridge CFStringRef)nsRequirement,kSecCSDefaultFlags, &keybaseRequirement);
-    OSStatus codeCheckResult = SecStaticCodeCheckValidityWithErrors(staticCode, kSecCSDefaultFlags, keybaseRequirement, NULL);
+    OSStatus codeCheckResult = SecStaticCodeCheckValidityWithErrors(staticCode, (kSecCSDefaultFlags | kSecCSStrictValidate | kSecCSCheckNestedCode | kSecCSCheckAllArchitectures | kSecCSEnforceRevocationChecks), keybaseRequirement, NULL);
     if (codeCheckResult != errSecSuccess) {
       *error = KBMakeError(codeCheckResult, @"Binary not signed by Keybase");
     }
@@ -373,6 +376,11 @@
   NSString *linkDir = @"/usr/local/bin";
   NSString *linkPath = [NSString stringWithFormat:@"%@/%@", linkDir, name];
 
+  if ([KBFSUtils checkIfPathIsFishy:path]) {
+    completion(KBMakeError(MPXPCErrorCodeInvalidRequest, @"Fishy path rejected"), nil);
+    return;
+  }
+
   // Check if link dir exists and resolves correctly
   if ([NSFileManager.defaultManager fileExistsAtPath:linkDir]) {
     NSString *resolved = [self resolveLinkPath:linkPath];
@@ -385,7 +393,6 @@
     NSString *neededPrefix = @"/Applications/Keybase.app";
 
     if ([KBFSUtils checkAbsolutePath:path hasAbsolutePrefix:neededPrefix]) {
-
       KBLog(@"Allowing creation of symlink %@ -> %@ since it's in %@", linkPath, path, neededPrefix);
 
       // Fix the link

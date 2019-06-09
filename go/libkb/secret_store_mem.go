@@ -15,7 +15,7 @@ func NewSecretStoreMem() *SecretStoreMem {
 func (s *SecretStoreMem) RetrieveSecret(m MetaContext, username NormalizedUsername) (LKSecFullSecret, error) {
 	secret, ok := s.secrets[username]
 	if !ok {
-		return LKSecFullSecret{}, ErrSecretForUserNotFound
+		return LKSecFullSecret{}, NewErrSecretForUserNotFound(username)
 	}
 	return secret, nil
 }
@@ -26,6 +26,10 @@ func (s *SecretStoreMem) StoreSecret(m MetaContext, username NormalizedUsername,
 }
 
 func (s *SecretStoreMem) ClearSecret(m MetaContext, username NormalizedUsername) error {
+	if username.IsNil() {
+		m.Debug("NOOPing SecretStoreMem#ClearSecret for empty username")
+		return nil
+	}
 	delete(s.secrets, username)
 	return nil
 }
@@ -37,3 +41,6 @@ func (s *SecretStoreMem) GetUsersWithStoredSecrets(m MetaContext) ([]string, err
 	}
 	return usernames, nil
 }
+
+func (s *SecretStoreMem) GetOptions(MetaContext) *SecretStoreOptions  { return nil }
+func (s *SecretStoreMem) SetOptions(MetaContext, *SecretStoreOptions) {}

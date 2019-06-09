@@ -351,4 +351,23 @@ protocol Common {
       PRIVATE_0,
       PUBLIC_1
   }
+
+  record SizedImage {
+    string path;
+    int width;
+  }
+
+  enum OfflineAvailability {
+    NONE_0,
+    BEST_EFFORT_1
+  }
+
+  // Primarily used in chat but defined here to avoid a circular import
+  @typedef("int") record ReacjiSkinTone {}
+  record UserReacjis {
+    // sorted array of frequently used reacjis
+    array<string> topReacjis;
+    // user preference for default reacji skin tone
+    ReacjiSkinTone skinTone;
+  }
 }

@@ -414,6 +414,8 @@ func (l LinkID) IsNil() bool {
 	return len(l) == 0
 }
 
+func NilTeamID() TeamID { return TeamID("") }
+
 func (s Seqno) Eq(s2 Seqno) bool {
 	return s == s2
 }
@@ -1222,6 +1224,10 @@ func (t TLFID) ToBytes() []byte {
 	return b
 }
 
+func (t TLFID) Eq(u TLFID) bool {
+	return t == u
+}
+
 func (b TLFIdentifyBehavior) UnblockThenForceIDTable() bool {
 	switch b {
 	case TLFIdentifyBehavior_GUI_PROFILE:
@@ -1308,7 +1314,8 @@ func (b TLFIdentifyBehavior) ShouldSuppressTrackerPopups() bool {
 		TLFIdentifyBehavior_KBFS_QR,
 		TLFIdentifyBehavior_SALTPACK,
 		TLFIdentifyBehavior_RESOLVE_AND_CHECK,
-		TLFIdentifyBehavior_KBFS_CHAT:
+		TLFIdentifyBehavior_KBFS_CHAT,
+		TLFIdentifyBehavior_KBFS_INIT:
 		// These are identifies that either happen without user interaction at
 		// all, or happen while you're staring at some Keybase UI that can
 		// report errors on its own. No popups needed.
@@ -1589,13 +1596,13 @@ func (u UserPlusKeysV2AllIncarnations) AllDeviceNames() []string {
 	var names []string
 
 	for _, k := range u.Current.DeviceKeys {
-		if k.DeviceDescription != "" && (k.DeviceType == "mobile" || k.DeviceType == "desktop") {
+		if k.DeviceDescription != "" {
 			names = append(names, k.DeviceDescription)
 		}
 	}
 	for _, v := range u.PastIncarnations {
 		for _, k := range v.DeviceKeys {
-			if k.DeviceDescription != "" && (k.DeviceType == "mobile" || k.DeviceType == "desktop") {
+			if k.DeviceDescription != "" {
 				names = append(names, k.DeviceDescription)
 			}
 		}
@@ -2117,6 +2124,10 @@ func (t TeamName) RootAncestorName() TeamName {
 	}
 }
 
+func (t TeamName) RootID() TeamID {
+	return t.RootAncestorName().ToTeamID(false)
+}
+
 func (t TeamName) Parent() (TeamName, error) {
 	if len(t.Parts) == 0 {
 		return t, fmt.Errorf("empty team name")
@@ -2182,6 +2193,28 @@ func (u UserPlusKeysV2) ToUserVersion() UserVersion {
 
 func (u UserPlusKeysV2AllIncarnations) ToUserVersion() UserVersion {
 	return u.Current.ToUserVersion()
+}
+
+func (u UserPlusKeysV2AllIncarnations) GetPerUserKeyAtSeqno(uv UserVersion, seqno Seqno, merkleSeqno Seqno) (*PerUserKey, error) {
+	incarnations := u.AllIncarnations()
+	for _, incarnation := range incarnations {
+		if incarnation.EldestSeqno == uv.EldestSeqno {
+			if incarnation.Reset != nil && incarnation.Reset.MerkleRoot.Seqno <= merkleSeqno {
+				return nil, nil
+			}
+			if len(incarnation.PerUserKeys) == 0 {
+				return nil, nil
+			}
+			for i := range incarnation.PerUserKeys {
+				perUserKey := incarnation.PerUserKeys[len(incarnation.PerUserKeys)-1-i]
+				if perUserKey.Seqno <= seqno {
+					return &perUserKey, nil
+				}
+			}
+			return nil, fmt.Errorf("didn't find per user key at seqno %d for uv %v", seqno, uv)
+		}
+	}
+	return nil, fmt.Errorf("didn't find uv %v in upak", uv)
 }
 
 // Can return nil.
@@ -2290,29 +2323,6 @@ func TeamInviteIDFromString(s string) (TeamInviteID, error) {
 
 func (i TeamInviteID) Eq(i2 TeamInviteID) bool {
 	return string(i) == string(i2)
-}
-
-func TeamInviteTypeFromString(s string, isDev bool) (TeamInviteType, error) {
-	switch s {
-	case "keybase":
-		return NewTeamInviteTypeDefault(TeamInviteCategory_KEYBASE), nil
-	case "email":
-		return NewTeamInviteTypeDefault(TeamInviteCategory_EMAIL), nil
-	case "twitter", "github", "facebook", "reddit", "hackernews", "pgp", "http", "https", "dns":
-		return NewTeamInviteTypeWithSbs(TeamInviteSocialNetwork(s)), nil
-	case "seitan_invite_token":
-		return NewTeamInviteTypeDefault(TeamInviteCategory_SEITAN), nil
-	default:
-		if isDev && s == "rooter" {
-			return NewTeamInviteTypeWithSbs(TeamInviteSocialNetwork(s)), nil
-		}
-		if isDev && s == "phone" {
-			return NewTeamInviteTypeDefault(TeamInviteCategory_PHONE), nil
-		}
-		// Don't want to break existing clients if we see an unknown invite
-		// type.
-		return NewTeamInviteTypeWithUnknown(s), nil
-	}
 }
 
 func (t TeamInviteType) String() (string, error) {
@@ -2659,4 +2669,81 @@ func (d FastTeamData) ID() TeamID {
 
 func (d FastTeamData) IsPublic() bool {
 	return d.Chain.Public
+}
+
+func (f FullName) String() string {
+	return string(f)
+}
+
+func (h BoxSummaryHash) String() string {
+	return string(h)
+}
+
+func (r BoxAuditAttemptResult) IsOK() bool {
+	switch r {
+	case BoxAuditAttemptResult_OK_VERIFIED, BoxAuditAttemptResult_OK_NOT_ATTEMPTED_ROLE, BoxAuditAttemptResult_OK_NOT_ATTEMPTED_OPENTEAM, BoxAuditAttemptResult_OK_NOT_ATTEMPTED_SUBTEAM:
+		return true
+	default:
+		return false
+	}
+}
+
+func (a BoxAuditAttempt) String() string {
+	ret := fmt.Sprintf("%s", a.Result)
+	if a.Error != nil {
+		ret += fmt.Sprintf("\t(error: %s)", *a.Error)
+	}
+	if a.Rotated {
+		ret += "\t(team rotated)"
+	}
+	return ret
+}
+
+func (r RegionCode) IsNil() bool {
+	return len(r) == 0
+}
+
+func (c ContactComponent) ValueString() string {
+	switch {
+	case c.Email != nil:
+		return string(*c.Email)
+	case c.PhoneNumber != nil:
+		return string(*c.PhoneNumber)
+	default:
+		return ""
+	}
+}
+
+func (c ContactComponent) FormatDisplayLabel(addLabel bool) string {
+	if addLabel && c.Label != "" {
+		return fmt.Sprintf("%s (%s)", c.ValueString(), c.Label)
+	}
+	return c.ValueString()
+}
+
+func (fct FolderConflictType) MarshalText() ([]byte, error) {
+	switch fct {
+	case FolderConflictType_NONE:
+		return []byte("none"), nil
+	case FolderConflictType_IN_CONFLICT:
+		return []byte("in conflict"), nil
+	case FolderConflictType_IN_CONFLICT_AND_STUCK:
+		return []byte("in conflict and stuck"), nil
+	default:
+		return []byte(fmt.Sprintf("unknown conflict type: %d", fct)), nil
+	}
+}
+
+func (fct *FolderConflictType) UnmarshalText(text []byte) error {
+	switch string(text) {
+	case "none":
+		*fct = FolderConflictType_NONE
+	case "in conflict":
+		*fct = FolderConflictType_IN_CONFLICT
+	case "in conflict and stuck":
+		*fct = FolderConflictType_IN_CONFLICT_AND_STUCK
+	default:
+		return errors.New(fmt.Sprintf("Unknown conflict type: %s", text))
+	}
+	return nil
 }

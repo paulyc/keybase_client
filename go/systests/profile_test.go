@@ -2,10 +2,13 @@ package systests
 
 import (
 	"context"
+	"io/ioutil"
+	"net/http"
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/keybase/client/go/engine"
+	"github.com/keybase/client/go/kbtest"
 	"github.com/keybase/client/go/libkb"
 	keybase1 "github.com/keybase/client/go/protocol/keybase1"
 	"github.com/stretchr/testify/require"
@@ -63,7 +66,7 @@ func TestProofSuggestions(t *testing.T) {
 			PickerText:    "PGP key",
 			PickerSubtext: "",
 		}, {
-			Key:           "bitcoin",
+			Key:           "btc",
 			ProfileText:   "Set a Bitcoin address",
 			PickerText:    "Bitcoin address",
 			PickerSubtext: "",
@@ -86,16 +89,60 @@ func TestProofSuggestions(t *testing.T) {
 			PickerSubtext: "theqrl.org",
 		}}}
 	require.Equal(t, expected.ShowMore, res.ShowMore)
-	require.Equal(t, len(expected.Suggestions), len(res.Suggestions))
+	require.True(t, len(res.Suggestions) >= len(expected.Suggestions), "should be at least as many results as expected")
+	for _, b := range res.Suggestions {
+		if b.Key == "theqrl.org" {
+			// Skip checking for logos for this one.
+			continue
+		}
+		require.Len(t, b.ProfileIcon, 2)
+		for _, icon := range b.ProfileIcon {
+			checkIcon(t, icon)
+		}
+		for _, icon := range b.PickerIcon {
+			checkIcon(t, icon)
+		}
+
+	}
+	var found int
 	for i, b := range res.Suggestions {
-		t.Logf("row %v", i)
-		a := expected.Suggestions[i]
+		if found >= len(expected.Suggestions) {
+			t.Logf("done")
+			break
+		}
+		t.Logf("row %v %v", i, b.Key)
+		a := expected.Suggestions[found]
+		if a.Key != b.Key {
+			t.Logf("skipping %v (mismatch)", a.Key)
+			continue
+		}
+		found++
 		require.Equal(t, a.Key, b.Key)
 		require.Equal(t, a.BelowFold, b.BelowFold)
 		require.Equal(t, a.ProfileText, b.ProfileText)
 		require.Equal(t, a.PickerText, b.PickerText)
 		require.Equal(t, a.PickerSubtext, b.PickerSubtext)
-		require.Nil(t, b.Metas)
+
+	}
+	require.Len(t, expected.Suggestions, found)
+}
+
+func checkIcon(t testing.TB, icon keybase1.SizedImage) {
+	if icon.Width < 2 {
+		t.Fatalf("unreasonable icon size")
+	}
+	if kbtest.SkipIconRemoteTest() {
+		t.Logf("Skipping icon remote test")
+		require.True(t, len(icon.Path) > 8)
+	} else {
+		resp, err := http.Get(icon.Path)
+		require.Equal(t, 200, resp.StatusCode, "icon file should be reachable")
+		require.NoError(t, err)
+		body, err := ioutil.ReadAll(resp.Body)
+		require.NoError(t, err)
+		if len(body) < 150 {
+			t.Fatalf("unreasonable icon payload size")
+		}
 	}
 }
 

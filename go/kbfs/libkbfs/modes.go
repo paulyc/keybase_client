@@ -93,6 +93,10 @@ func (md modeDefault) BlockManagementEnabled() bool {
 	return true
 }
 
+func (md modeDefault) MaxBlockPtrsToManageAtOnce() int {
+	return -1 /* unconstrained by default */
+}
+
 func (md modeDefault) QuotaReclamationEnabled() bool {
 	return true
 }
@@ -154,6 +158,10 @@ func (md modeDefault) LocalHTTPServerEnabled() bool {
 
 func (md modeDefault) MaxCleanBlockCacheCapacity() uint64 {
 	return math.MaxUint64
+}
+
+func (md modeDefault) OldStorageRootCleaningEnabled() bool {
+	return true
 }
 
 // Minimal mode:
@@ -226,6 +234,10 @@ func (mm modeMinimal) BlockManagementEnabled() bool {
 	return false
 }
 
+func (mm modeMinimal) MaxBlockPtrsToManageAtOnce() int {
+	panic("Shouldn't be called when block management is disabled")
+}
+
 func (mm modeMinimal) QuotaReclamationEnabled() bool {
 	return false
 }
@@ -289,6 +301,10 @@ func (mm modeMinimal) LocalHTTPServerEnabled() bool {
 
 func (mm modeMinimal) MaxCleanBlockCacheCapacity() uint64 {
 	return math.MaxUint64
+}
+
+func (mm modeMinimal) OldStorageRootCleaningEnabled() bool {
+	return false
 }
 
 // Single op mode:
@@ -359,6 +375,10 @@ func (mso modeSingleOp) LocalHTTPServerEnabled() bool {
 	return false
 }
 
+func (mso modeSingleOp) OldStorageRootCleaningEnabled() bool {
+	return false
+}
+
 // Constrained mode:
 
 type modeConstrained struct {
@@ -397,6 +417,10 @@ func (mc modeConstrained) ConflictResolutionEnabled() bool {
 	return true
 }
 
+func (mc modeConstrained) MaxBlockPtrsToManageAtOnce() int {
+	return 10000
+}
+
 func (mc modeConstrained) QuotaReclamationEnabled() bool {
 	return true
 }
@@ -428,10 +452,6 @@ func (mc modeConstrained) UnmergedTLFsEnabled() bool {
 }
 
 func (mc modeConstrained) ServiceKeepaliveEnabled() bool {
-	return false
-}
-
-func (mc modeConstrained) TLFEditHistoryEnabled() bool {
 	return false
 }
 
@@ -483,6 +503,10 @@ func (mml modeMemoryLimited) LocalHTTPServerEnabled() bool {
 
 func (mml modeMemoryLimited) MaxCleanBlockCacheCapacity() uint64 {
 	return 1 * (1 << 20) // 1 MB
+}
+
+func (mml modeMemoryLimited) TLFEditHistoryEnabled() bool {
+	return false
 }
 
 // Wrapper for tests.

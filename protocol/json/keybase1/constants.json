@@ -20,6 +20,8 @@
         "SCExists_230",
         "SCCanceled_237",
         "SCInputCanceled_239",
+        "SCBadUsername_243",
+        "SCOffline_267",
         "SCReloginRequired_274",
         "SCResolutionFailed_275",
         "SCProfileNotPublic_276",
@@ -121,6 +123,7 @@
         "SCChatClientError_2516",
         "SCChatNotInTeam_2517",
         "SCChatStalePreviousState_2518",
+        "SCChatEphemeralRetentionPolicyViolatedError_2519",
         "SCTeamBadMembership_2604",
         "SCTeamSelfNotOwner_2607",
         "SCTeamNotFound_2614",
@@ -204,7 +207,8 @@
         "SCNISTNotFound_3218",
         "SCNISTBadClock_3219",
         "SCNISTSigBadCtime_3220",
-        "SCBadSignupUsernameDeleted_3221"
+        "SCBadSignupUsernameDeleted_3221",
+        "SCNoPaperKeys_3605"
       ]
     }
   ],

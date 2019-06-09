@@ -18,11 +18,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/keybase/client/go/kbfs/data"
+	"github.com/keybase/client/go/kbfs/idutil"
 	"github.com/keybase/client/go/kbfs/kbfsmd"
 	"github.com/keybase/client/go/kbfs/libfs"
 	"github.com/keybase/client/go/kbfs/libgit"
 	"github.com/keybase/client/go/kbfs/libkbfs"
 	"github.com/keybase/client/go/kbfs/tlf"
+	"github.com/keybase/client/go/kbfs/tlfhandle"
 	"github.com/keybase/client/go/libkb"
 	"github.com/keybase/client/go/logger"
 	"github.com/keybase/client/go/protocol/keybase1"
@@ -105,7 +108,7 @@ const (
 type runner struct {
 	config libkbfs.Config
 	log    logger.Logger
-	h      *libkbfs.TlfHandle
+	h      *tlfhandle.Handle
 	remote string
 	repo   string
 	gitDir string
@@ -158,14 +161,14 @@ func newRunner(ctx context.Context, config libkbfs.Config,
 	}
 
 	h, err := libkbfs.GetHandleFromFolderNameAndType(
-		ctx, config.KBPKI(), config.MDOps(), parts[1], t)
+		ctx, config.KBPKI(), config.MDOps(), config, parts[1], t)
 	if err != nil {
 		return nil, err
 	}
 
 	// Use the device ID and PID to make a unique ID (for generating
 	// temp files in KBFS).
-	session, err := libkbfs.GetCurrentSessionIfPossible(
+	session, err := idutil.GetCurrentSessionIfPossible(
 		ctx, config.KBPKI(), h.Type() == tlf.Public)
 	if err != nil {
 		return nil, err
@@ -447,7 +450,7 @@ func (r *runner) printStageStart(ctx context.Context,
 
 // caller should make sure doneCh is closed when journal is all flushed.
 func (r *runner) printJournalStatus(
-	ctx context.Context, jServer *libkbfs.JournalServer, tlfID tlf.ID,
+	ctx context.Context, jManager *libkbfs.JournalManager, tlfID tlf.ID,
 	doneCh <-chan struct{}) {
 	r.printStageEndIfNeeded(ctx)
 	// Note: the "first" status here gets us the number of unflushed
@@ -456,7 +459,7 @@ func (r *runner) printJournalStatus(
 	// throughout the whole operation, which would be more
 	// informative.  It would be better to have that as the
 	// denominator, but there's no easy way to get it right now.
-	firstStatus, err := jServer.JournalStatus(tlfID)
+	firstStatus, err := jManager.JournalStatus(tlfID)
 	if err != nil {
 		r.log.CDebugf(ctx, "Error getting status: %+v", err)
 		return
@@ -489,7 +492,7 @@ func (r *runner) printJournalStatus(
 	for {
 		select {
 		case <-ticker.C:
-			status, err := jServer.JournalStatus(tlfID)
+			status, err := jManager.JournalStatus(tlfID)
 			if err != nil {
 				r.log.CDebugf(ctx, "Error getting status: %+v", err)
 				return
@@ -534,7 +537,7 @@ func (r *runner) waitForJournal(ctx context.Context) error {
 	}
 
 	rootNode, _, err := r.config.KBFSOps().GetOrCreateRootNode(
-		ctx, r.h, libkbfs.MasterBranch)
+		ctx, r.h, data.MasterBranch)
 	if err != nil {
 		return err
 	}
@@ -544,13 +547,13 @@ func (r *runner) waitForJournal(ctx context.Context) error {
 		return err
 	}
 
-	jServer, err := libkbfs.GetJournalServer(r.config)
+	jManager, err := libkbfs.GetJournalManager(r.config)
 	if err != nil {
 		r.log.CDebugf(ctx, "No journal server: %+v", err)
 		return nil
 	}
 
-	_, err = jServer.JournalStatus(rootNode.GetFolderBranch().Tlf)
+	_, err = jManager.JournalStatus(rootNode.GetFolderBranch().Tlf)
 	if err != nil {
 		r.log.CDebugf(ctx, "No journal: %+v", err)
 		return nil
@@ -560,7 +563,7 @@ func (r *runner) waitForJournal(ctx context.Context) error {
 	waitDoneCh := make(chan struct{})
 	go func() {
 		r.printJournalStatus(
-			ctx, jServer, rootNode.GetFolderBranch().Tlf, waitDoneCh)
+			ctx, jManager, rootNode.GetFolderBranch().Tlf, waitDoneCh)
 		close(printDoneCh)
 	}()
 
@@ -568,7 +571,7 @@ func (r *runner) waitForJournal(ctx context.Context) error {
 	// revision, to make sure that no partial states of the bare repo
 	// are seen by other readers of the TLF.  It also waits for any
 	// necessary conflict resolution to complete.
-	err = jServer.FinishSingleOp(ctx, rootNode.GetFolderBranch().Tlf,
+	err = jManager.FinishSingleOp(ctx, rootNode.GetFolderBranch().Tlf,
 		nil, keybase1.MDPriorityGit)
 	if err != nil {
 		return err
@@ -577,7 +580,7 @@ func (r *runner) waitForJournal(ctx context.Context) error {
 	<-printDoneCh
 
 	// Make sure that everything is truly flushed.
-	status, err := jServer.JournalStatus(rootNode.GetFolderBranch().Tlf)
+	status, err := jManager.JournalStatus(rootNode.GetFolderBranch().Tlf)
 	if err != nil {
 		return err
 	}
@@ -712,7 +715,7 @@ func humanizeObjects(n int, d int) string {
 func (r *runner) printJournalStatusUntilFlushed(
 	ctx context.Context, doneCh <-chan struct{}) {
 	rootNode, _, err := r.config.KBFSOps().GetOrCreateRootNode(
-		ctx, r.h, libkbfs.MasterBranch)
+		ctx, r.h, data.MasterBranch)
 	if err != nil {
 		r.log.CDebugf(ctx, "GetOrCreateRootNode error: %+v", err)
 		return
@@ -724,13 +727,13 @@ func (r *runner) printJournalStatusUntilFlushed(
 		return
 	}
 
-	jServer, err := libkbfs.GetJournalServer(r.config)
+	jManager, err := libkbfs.GetJournalManager(r.config)
 	if err != nil {
 		r.log.CDebugf(ctx, "No journal server: %+v", err)
 	}
 
 	r.printJournalStatus(
-		ctx, jServer, rootNode.GetFolderBranch().Tlf, doneCh)
+		ctx, jManager, rootNode.GetFolderBranch().Tlf, doneCh)
 }
 
 func (r *runner) processGogitStatus(ctx context.Context,
@@ -1123,7 +1126,8 @@ func (r *runner) checkGC(ctx context.Context) (err error) {
 	command := fmt.Sprintf("keybase git gc %s", r.repo)
 	if r.h.Type() == tlf.SingleTeam {
 		tid := r.h.FirstResolvedWriter()
-		teamName, err := r.config.KBPKI().GetNormalizedUsername(ctx, tid)
+		teamName, err := r.config.KBPKI().GetNormalizedUsername(
+			ctx, tid, r.config.OfflineAvailabilityForID(r.h.TlfID()))
 		if err != nil {
 			return err
 		}
@@ -1531,6 +1535,9 @@ func (r *runner) pushSome(
 		Name: localRepoRemoteName,
 		URLs: []string{r.gitDir},
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	results := make(map[string]error, len(args))
 	var refspecs []gogitcfg.RefSpec
@@ -1701,6 +1708,9 @@ func (r *runner) handlePushBatch(ctx context.Context, args [][]string) (
 			result = fmt.Sprintf("error %s %s", d, e.Error())
 		}
 		_, err = r.output.Write([]byte(result + "\n"))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Remove any errored commits so that we don't send an update

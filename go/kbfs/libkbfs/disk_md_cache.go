@@ -16,6 +16,7 @@ import (
 	"github.com/keybase/client/go/logger"
 	"github.com/pkg/errors"
 	ldberrors "github.com/syndtr/goleveldb/leveldb/errors"
+	"github.com/syndtr/goleveldb/leveldb/filter"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb/storage"
 )
@@ -56,7 +57,7 @@ type DiskMDCacheLocal struct {
 	// Protect the disk caches from being shutdown while they're being
 	// accessed, and mutable data.
 	lock       sync.RWMutex
-	headsDb    *levelDb // tlfID -> metadata block
+	headsDb    *LevelDb // tlfID -> metadata block
 	tlfsCached map[tlf.ID]kbfsmd.Revision
 	tlfsStaged map[tlf.ID][]diskMDBlock
 
@@ -131,6 +132,7 @@ func newDiskMDCacheLocalFromStorage(
 	}()
 	mdDbOptions := *leveldbOptions
 	mdDbOptions.CompactionTableSize = defaultMDCacheTableSize
+	mdDbOptions.Filter = filter.NewBloomFilter(16)
 	headsDb, err := openLevelDBWithOptions(headsStorage, &mdDbOptions)
 	if err != nil {
 		return nil, err

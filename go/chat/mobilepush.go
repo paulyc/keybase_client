@@ -81,14 +81,15 @@ func (h *MobilePush) formatTextPush(ctx context.Context, uid gregor1.UID, convID
 	case chat1.ConversationMembersType_TEAM:
 		var channelName string
 		// Try to get the channel name
-		ib, _, err := h.G().InboxSource.Read(ctx, uid, types.ConversationLocalizerBlocking, true, nil,
+		ib, _, err := h.G().InboxSource.Read(ctx, uid, types.ConversationLocalizerBlocking,
+			types.InboxSourceDataSourceAll, nil,
 			&chat1.GetInboxLocalQuery{
 				ConvIDs: []chat1.ConversationID{convID},
 			}, nil)
 		if err != nil || len(ib.Convs) == 0 {
 			h.Debug(ctx, "FormatPushText: failed to unbox conv: %v", convID)
 		} else {
-			channelName = utils.GetTopicName(ib.Convs[0])
+			channelName = ib.Convs[0].Info.TopicName
 		}
 		if channelName == "" {
 			// Don't give up here, just display the team name only
@@ -113,7 +114,8 @@ func (h *MobilePush) formatReactionPush(ctx context.Context, uid gregor1.UID, co
 	switch membersType {
 	case chat1.ConversationMembersType_TEAM:
 		// Try to get the channel name
-		ib, _, err := h.G().InboxSource.Read(ctx, uid, types.ConversationLocalizerBlocking, true, nil,
+		ib, _, err := h.G().InboxSource.Read(ctx, uid, types.ConversationLocalizerBlocking,
+			types.InboxSourceDataSourceAll, nil,
 			&chat1.GetInboxLocalQuery{
 				ConvIDs: []chat1.ConversationID{convID},
 			}, nil)
@@ -123,7 +125,7 @@ func (h *MobilePush) formatReactionPush(ctx context.Context, uid gregor1.UID, co
 				msg.Valid().SenderUsername, reaction), nil
 		}
 		return emoji.Sprintf("(%s#%s): %s reacted to your message with %v", msg.Valid().ClientHeader.TlfName,
-			utils.GetTopicName(ib.Convs[0]), msg.Valid().SenderUsername, reaction), nil
+			ib.Convs[0].Info.TopicName, msg.Valid().SenderUsername, reaction), nil
 	default:
 		return emoji.Sprintf("%s reacted to your message with %v", msg.Valid().SenderUsername,
 			reaction), nil

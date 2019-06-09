@@ -23,6 +23,17 @@
           "name": "uid"
         }
       ]
+    },
+    {
+      "type": "record",
+      "name": "EmailAddressVerifiedMsg",
+      "fields": [
+        {
+          "type": "EmailAddress",
+          "name": "email",
+          "jsonkey": "email"
+        }
+      ]
     }
   ],
   "messages": {
@@ -102,25 +113,6 @@
         }
       ],
       "response": null
-    },
-    "bulkLookupEmails": {
-      "request": [
-        {
-          "name": "sessionID",
-          "type": "int"
-        },
-        {
-          "name": "emailContacts",
-          "type": {
-            "type": "array",
-            "items": "string"
-          }
-        }
-      ],
-      "response": {
-        "type": "array",
-        "items": "EmailLookupResult"
-      }
     },
     "setVisibilityEmail": {
       "request": [

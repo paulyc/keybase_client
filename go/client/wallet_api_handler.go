@@ -3,6 +3,7 @@ package client
 import (
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -38,6 +39,9 @@ var ErrMessageTooLong = errors.New("message is too long")
 // ErrInvalidAmount is for invalid payment amounts.
 var ErrInvalidAmount = errors.New("invalid amount")
 
+// ErrMemoTextTooLong is for lengthy memos.
+var ErrMemoTextTooLong = errors.New("memo text is too long (max 28 characters)")
+
 // walletAPIHandler is a type that can handle all the json api
 // methods for the wallet API.
 type walletAPIHandler struct {
@@ -64,6 +68,7 @@ func (w *walletAPIHandler) handle(ctx context.Context, c Call, wr io.Writer) err
 // list of all supported methods:
 const (
 	balancesMethod     = "balances"
+	batchMethod        = "batch"
 	cancelMethod       = "cancel"
 	detailsMethod      = "details"
 	getInflationMethod = "get-inflation"
@@ -77,6 +82,7 @@ const (
 // validWalletMethodsV1 is a map of the valid V1 methods for quick lookup.
 var validWalletMethodsV1 = map[string]bool{
 	balancesMethod:     true,
+	batchMethod:        true,
 	cancelMethod:       true,
 	detailsMethod:      true,
 	getInflationMethod: true,
@@ -102,6 +108,8 @@ func (w *walletAPIHandler) handleV1(ctx context.Context, c Call, wr io.Writer) e
 	switch c.Method {
 	case balancesMethod:
 		return w.balances(ctx, c, wr)
+	case batchMethod:
+		return w.batch(ctx, c, wr)
 	case cancelMethod:
 		return w.cancelPayment(ctx, c, wr)
 	case detailsMethod:
@@ -130,6 +138,30 @@ func (w *walletAPIHandler) balances(ctx context.Context, c Call, wr io.Writer) e
 		return w.encodeErr(c, err, wr)
 	}
 	return w.encodeResult(c, accounts, wr)
+}
+
+// batch submits a batch of payments as fast as it can.
+func (w *walletAPIHandler) batch(ctx context.Context, c Call, wr io.Writer) error {
+	var opts batchOptions
+	if err := unmarshalOptions(c, &opts); err != nil {
+		return w.encodeErr(c, err, wr)
+	}
+
+	arg := stellar1.BatchLocalArg{
+		BatchID:     opts.BatchID,
+		TimeoutSecs: opts.Timeout,
+		UseMulti:    true,
+	}
+	for _, p := range opts.Payments {
+		arg.Payments = append(arg.Payments, stellar1.BatchPaymentArg{Recipient: p.Recipient, Amount: p.Amount, Message: p.Message})
+	}
+
+	result, err := w.cli.BatchLocal(ctx, arg)
+	if err != nil {
+		return w.encodeErr(c, err, wr)
+	}
+
+	return w.encodeResult(c, result, wr)
 }
 
 // cancelPayment cancels a pending relay payment and yanks back the funds.
@@ -251,6 +283,7 @@ func (w *walletAPIHandler) send(ctx context.Context, c Call, wr io.Writer) error
 		DisplayAmount:   displayAmount,
 		DisplayCurrency: displayCurrency,
 		FromAccountID:   stellar1.AccountID(opts.FromAccountID),
+		PublicNote:      opts.MemoText,
 	}
 	result, err := w.cli.SendCLILocal(ctx, arg)
 	if err != nil {
@@ -404,6 +437,7 @@ type sendOptions struct {
 	Currency      string `json:"currency"`
 	Message       string `json:"message"`
 	FromAccountID string `json:"from-account-id"`
+	MemoText      string `json:"memo-text"`
 }
 
 // Check makes sure that the send options are valid.
@@ -430,6 +464,50 @@ func (c *sendOptions) Check() error {
 	}
 	if len(c.Message) > libkb.MaxStellarPaymentNoteLength {
 		return ErrMessageTooLong
+	}
+	if len(c.MemoText) > 28 {
+		return ErrMemoTextTooLong
+	}
+
+	return nil
+}
+
+type batchPayment struct {
+	Recipient string `json:"recipient"`
+	Amount    string `json:"amount"`
+	Message   string `json:"message"`
+}
+
+// batchOptions are the options for the batch payment method.
+type batchOptions struct {
+	BatchID  string         `json:"batchID"`
+	Timeout  int            `json:"timeout"`
+	Payments []batchPayment `json:"payments"`
+}
+
+// Check makes sure that the batch options are valid.
+func (c *batchOptions) Check() error {
+	for i, p := range c.Payments {
+		if strings.TrimSpace(p.Recipient) == "" {
+			return fmt.Errorf("payment %d: %s", i, ErrRecipientMissing)
+		}
+		if strings.TrimSpace(p.Amount) == "" {
+			return fmt.Errorf("payment %d: %s", i, ErrAmountMissing)
+		}
+		namt, err := stellarnet.ParseStellarAmount(p.Amount)
+		if err != nil {
+			return fmt.Errorf("payment %d: %s", i, ErrInvalidAmount)
+		}
+		if namt < 0 {
+			return fmt.Errorf("payment %d: %s", i, ErrInvalidAmount)
+		}
+		if len(p.Message) > libkb.MaxStellarPaymentNoteLength {
+			return fmt.Errorf("payment %d: %s", i, ErrMessageTooLong)
+		}
+	}
+
+	if c.Timeout <= 0 {
+		c.Timeout = 15 * len(c.Payments)
 	}
 
 	return nil

@@ -152,7 +152,7 @@ build_one_architecture() {
   # Copy in the systemd unit files.
   units_dir="$layout_dir/usr/lib/systemd/user"
   mkdir -p "$units_dir"
-  cp "$here/systemd"/* "$this_repo/go/kbfs/packaging/linux/systemd"/* "$units_dir"
+  cp "$here/systemd"/* "$units_dir"
 
   # Check for whitespace in all the filenames we've copied. We don't support
   # whitespace in our later build scripts (for example RPM packaging), and even
@@ -167,7 +167,18 @@ build_one_architecture() {
 # resinit_nix.go and fail the i386 build
 export CGO_ENABLED=1
 
+if [ -n "${KEYBASE_BUILD_ARM_ONLY:-}" ] ; then
+  echo "Keybase: Building for ARM only"
+  export GOARCH=arm64
+  export debian_arch=arm64
+  export electron_arch=arm64
+  build_one_architecture
+  echo "Keybase: Built ARM; exiting..."
+  exit
+fi
+
 if [ -z "${KEYBASE_SKIP_64_BIT:-}" ] ; then
+  echo "Keybase: Building for x86-64"
   export GOARCH=amd64
   export debian_arch=amd64
   export electron_arch=x64
@@ -177,6 +188,7 @@ else
 fi
 
 if [ -z "${KEYBASE_SKIP_32_BIT:-}" ] ; then
+  echo "Keybase: Building for x86"
   export GOARCH=386
   export debian_arch=i386
   export electron_arch=ia32

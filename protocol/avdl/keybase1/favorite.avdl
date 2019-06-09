@@ -10,6 +10,36 @@ protocol favorite {
     TEAM_3
   }
 
+  enum FolderConflictType {
+    NONE_0,
+    IN_CONFLICT_1,
+    IN_CONFLICT_AND_STUCK_2,
+    CLEARED_CONFLICT_3
+}
+
+  enum ConflictStateType {
+    AutomaticResolving_0,
+    ManualResolvingServerView_1,
+    ManualResolvingLocalView_2
+  }
+
+  record ConflictAutomaticResolving {
+    boolean isStuck;
+  }
+
+  record ConflictManualResolvingServerView {
+    array<Path> localViews;
+  }
+
+  record ConflictManualResolvingLocalView {
+    Path serverView;
+  }
+
+  variant ConflictState switch (ConflictStateType conflictStateType) {
+    case AutomaticResolving: ConflictAutomaticResolving;
+    case ManualResolvingServerView: ConflictManualResolvingServerView;
+    case ManualResolvingLocalView: ConflictManualResolvingLocalView;
+  }
 
   /**
     Folder represents a favorite top-level folder in kbfs.
@@ -19,7 +49,6 @@ protocol favorite {
   record Folder {
     string name;              // patrick,max or chris,maxtaco@twitter#strib
     boolean private;          // (DEPRECATED) in /keybase/private or /keybase/public?
-    boolean notificationsOn;  // user wants to be notified when this folder changes
     boolean created;          // this folder was just created by this user
     FolderType folderType;    // what type of folder is this?
 
@@ -28,7 +57,17 @@ protocol favorite {
     @jsonkey("team_id") @mpackkey("team_id")
     union { null, TeamID } teamID;
 
-  }
+    // TODO: decide if we need to include an ID here
+
+    @jsonkey("reset_members") @mpackkey("reset_members")
+    array<User> resetMembers;
+
+    union { null, Time } mtime;
+
+    union { null, ConflictState } conflictState;
+
+    union { null, FolderSyncConfig } syncConfig; // only set in some simplefs RPC responses
+}
 
   // Each of your TLFs is in one of 3 states with respect to favoriting. Either
   // you've favorited it, or you've ignored it, or you haven't done either of

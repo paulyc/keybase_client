@@ -8,20 +8,6 @@ import (
 	context "golang.org/x/net/context"
 )
 
-type Tracker struct {
-	Tracker UID  `codec:"tracker" json:"tracker"`
-	Status  int  `codec:"status" json:"status"`
-	MTime   Time `codec:"mTime" json:"mTime"`
-}
-
-func (o Tracker) DeepCopy() Tracker {
-	return Tracker{
-		Tracker: o.Tracker.DeepCopy(),
-		Status:  o.Status,
-		MTime:   o.MTime.DeepCopy(),
-	}
-}
-
 type TrackProof struct {
 	ProofType string `codec:"proofType" json:"proofType"`
 	ProofName string `codec:"proofName" json:"proofName"`
@@ -128,6 +114,12 @@ func (o UserSummary) DeepCopy() UserSummary {
 	}
 }
 
+type EmailAddress string
+
+func (o EmailAddress) DeepCopy() EmailAddress {
+	return o
+}
+
 type Email struct {
 	Email      EmailAddress       `codec:"email" json:"email"`
 	IsVerified bool               `codec:"isVerified" json:"isVerified"`
@@ -211,12 +203,14 @@ func (o UserSummary2Set) DeepCopy() UserSummary2Set {
 type InterestingPerson struct {
 	Uid      UID    `codec:"uid" json:"uid"`
 	Username string `codec:"username" json:"username"`
+	Fullname string `codec:"fullname" json:"fullname"`
 }
 
 func (o InterestingPerson) DeepCopy() InterestingPerson {
 	return InterestingPerson{
 		Uid:      o.Uid.DeepCopy(),
 		Username: o.Username,
+		Fullname: o.Fullname,
 	}
 }
 
@@ -296,18 +290,6 @@ func (o ProofSuggestion) DeepCopy() ProofSuggestion {
 	}
 }
 
-type SizedImage struct {
-	Path  string `codec:"path" json:"path"`
-	Width int    `codec:"width" json:"width"`
-}
-
-func (o SizedImage) DeepCopy() SizedImage {
-	return SizedImage{
-		Path:  o.Path,
-		Width: o.Width,
-	}
-}
-
 type NextMerkleRootRes struct {
 	Res *MerkleRootV2 `codec:"res,omitempty" json:"res,omitempty"`
 }
@@ -324,24 +306,18 @@ func (o NextMerkleRootRes) DeepCopy() NextMerkleRootRes {
 	}
 }
 
-type EmailAddress string
-
-func (o EmailAddress) DeepCopy() EmailAddress {
-	return o
+type CanLogoutRes struct {
+	CanLogout     bool   `codec:"canLogout" json:"canLogout"`
+	Reason        string `codec:"reason" json:"reason"`
+	SetPassphrase bool   `codec:"setPassphrase" json:"setPassphrase"`
 }
 
-type ListTrackersArg struct {
-	SessionID int `codec:"sessionID" json:"sessionID"`
-	Uid       UID `codec:"uid" json:"uid"`
-}
-
-type ListTrackersByNameArg struct {
-	SessionID int    `codec:"sessionID" json:"sessionID"`
-	Username  string `codec:"username" json:"username"`
-}
-
-type ListTrackersSelfArg struct {
-	SessionID int `codec:"sessionID" json:"sessionID"`
+func (o CanLogoutRes) DeepCopy() CanLogoutRes {
+	return CanLogoutRes{
+		CanLogout:     o.CanLogout,
+		Reason:        o.Reason,
+		SetPassphrase: o.SetPassphrase,
+	}
 }
 
 type LoadUncheckedUserSummariesArg struct {
@@ -366,9 +342,10 @@ type LoadUserPlusKeysArg struct {
 }
 
 type LoadUserPlusKeysV2Arg struct {
-	SessionID  int `codec:"sessionID" json:"sessionID"`
-	Uid        UID `codec:"uid" json:"uid"`
-	PollForKID KID `codec:"pollForKID" json:"pollForKID"`
+	SessionID  int                 `codec:"sessionID" json:"sessionID"`
+	Uid        UID                 `codec:"uid" json:"uid"`
+	PollForKID KID                 `codec:"pollForKID" json:"pollForKID"`
+	Oa         OfflineAvailability `codec:"oa" json:"oa"`
 }
 
 type LoadPublicKeysArg struct {
@@ -454,10 +431,22 @@ type FindNextMerkleRootAfterResetArg struct {
 	Prev       ResetMerkleRoot `codec:"prev" json:"prev"`
 }
 
+type LoadHasRandomPwArg struct {
+	SessionID   int  `codec:"sessionID" json:"sessionID"`
+	ForceRepoll bool `codec:"forceRepoll" json:"forceRepoll"`
+}
+
+type CanLogoutArg struct {
+	SessionID int `codec:"sessionID" json:"sessionID"`
+}
+
+type UserCardArg struct {
+	SessionID  int    `codec:"sessionID" json:"sessionID"`
+	Username   string `codec:"username" json:"username"`
+	UseSession bool   `codec:"useSession" json:"useSession"`
+}
+
 type UserInterface interface {
-	ListTrackers(context.Context, ListTrackersArg) ([]Tracker, error)
-	ListTrackersByName(context.Context, ListTrackersByNameArg) ([]Tracker, error)
-	ListTrackersSelf(context.Context, int) ([]Tracker, error)
 	// Load user summaries for the supplied uids.
 	// They are "unchecked" in that the client is not verifying the info from the server.
 	// If len(uids) > 500, the first 500 will be returned.
@@ -501,57 +490,15 @@ type UserInterface interface {
 	// at resetSeqno. You should pass it prev, which was the last known Merkle root at the time of
 	// the reset. Usually, we'll just turn up the next Merkle root, but not always.
 	FindNextMerkleRootAfterReset(context.Context, FindNextMerkleRootAfterResetArg) (NextMerkleRootRes, error)
+	LoadHasRandomPw(context.Context, LoadHasRandomPwArg) (bool, error)
+	CanLogout(context.Context, int) (CanLogoutRes, error)
+	UserCard(context.Context, UserCardArg) (*UserCard, error)
 }
 
 func UserProtocol(i UserInterface) rpc.Protocol {
 	return rpc.Protocol{
 		Name: "keybase.1.user",
 		Methods: map[string]rpc.ServeHandlerDescription{
-			"listTrackers": {
-				MakeArg: func() interface{} {
-					var ret [1]ListTrackersArg
-					return &ret
-				},
-				Handler: func(ctx context.Context, args interface{}) (ret interface{}, err error) {
-					typedArgs, ok := args.(*[1]ListTrackersArg)
-					if !ok {
-						err = rpc.NewTypeError((*[1]ListTrackersArg)(nil), args)
-						return
-					}
-					ret, err = i.ListTrackers(ctx, typedArgs[0])
-					return
-				},
-			},
-			"listTrackersByName": {
-				MakeArg: func() interface{} {
-					var ret [1]ListTrackersByNameArg
-					return &ret
-				},
-				Handler: func(ctx context.Context, args interface{}) (ret interface{}, err error) {
-					typedArgs, ok := args.(*[1]ListTrackersByNameArg)
-					if !ok {
-						err = rpc.NewTypeError((*[1]ListTrackersByNameArg)(nil), args)
-						return
-					}
-					ret, err = i.ListTrackersByName(ctx, typedArgs[0])
-					return
-				},
-			},
-			"listTrackersSelf": {
-				MakeArg: func() interface{} {
-					var ret [1]ListTrackersSelfArg
-					return &ret
-				},
-				Handler: func(ctx context.Context, args interface{}) (ret interface{}, err error) {
-					typedArgs, ok := args.(*[1]ListTrackersSelfArg)
-					if !ok {
-						err = rpc.NewTypeError((*[1]ListTrackersSelfArg)(nil), args)
-						return
-					}
-					ret, err = i.ListTrackersSelf(ctx, typedArgs[0].SessionID)
-					return
-				},
-			},
 			"loadUncheckedUserSummaries": {
 				MakeArg: func() interface{} {
 					var ret [1]LoadUncheckedUserSummariesArg
@@ -867,28 +814,57 @@ func UserProtocol(i UserInterface) rpc.Protocol {
 					return
 				},
 			},
+			"loadHasRandomPw": {
+				MakeArg: func() interface{} {
+					var ret [1]LoadHasRandomPwArg
+					return &ret
+				},
+				Handler: func(ctx context.Context, args interface{}) (ret interface{}, err error) {
+					typedArgs, ok := args.(*[1]LoadHasRandomPwArg)
+					if !ok {
+						err = rpc.NewTypeError((*[1]LoadHasRandomPwArg)(nil), args)
+						return
+					}
+					ret, err = i.LoadHasRandomPw(ctx, typedArgs[0])
+					return
+				},
+			},
+			"canLogout": {
+				MakeArg: func() interface{} {
+					var ret [1]CanLogoutArg
+					return &ret
+				},
+				Handler: func(ctx context.Context, args interface{}) (ret interface{}, err error) {
+					typedArgs, ok := args.(*[1]CanLogoutArg)
+					if !ok {
+						err = rpc.NewTypeError((*[1]CanLogoutArg)(nil), args)
+						return
+					}
+					ret, err = i.CanLogout(ctx, typedArgs[0].SessionID)
+					return
+				},
+			},
+			"userCard": {
+				MakeArg: func() interface{} {
+					var ret [1]UserCardArg
+					return &ret
+				},
+				Handler: func(ctx context.Context, args interface{}) (ret interface{}, err error) {
+					typedArgs, ok := args.(*[1]UserCardArg)
+					if !ok {
+						err = rpc.NewTypeError((*[1]UserCardArg)(nil), args)
+						return
+					}
+					ret, err = i.UserCard(ctx, typedArgs[0])
+					return
+				},
+			},
 		},
 	}
 }
 
 type UserClient struct {
 	Cli rpc.GenericClient
-}
-
-func (c UserClient) ListTrackers(ctx context.Context, __arg ListTrackersArg) (res []Tracker, err error) {
-	err = c.Cli.Call(ctx, "keybase.1.user.listTrackers", []interface{}{__arg}, &res)
-	return
-}
-
-func (c UserClient) ListTrackersByName(ctx context.Context, __arg ListTrackersByNameArg) (res []Tracker, err error) {
-	err = c.Cli.Call(ctx, "keybase.1.user.listTrackersByName", []interface{}{__arg}, &res)
-	return
-}
-
-func (c UserClient) ListTrackersSelf(ctx context.Context, sessionID int) (res []Tracker, err error) {
-	__arg := ListTrackersSelfArg{SessionID: sessionID}
-	err = c.Cli.Call(ctx, "keybase.1.user.listTrackersSelf", []interface{}{__arg}, &res)
-	return
 }
 
 // Load user summaries for the supplied uids.
@@ -1021,5 +997,21 @@ func (c UserClient) FindNextMerkleRootAfterRevoke(ctx context.Context, __arg Fin
 // the reset. Usually, we'll just turn up the next Merkle root, but not always.
 func (c UserClient) FindNextMerkleRootAfterReset(ctx context.Context, __arg FindNextMerkleRootAfterResetArg) (res NextMerkleRootRes, err error) {
 	err = c.Cli.Call(ctx, "keybase.1.user.findNextMerkleRootAfterReset", []interface{}{__arg}, &res)
+	return
+}
+
+func (c UserClient) LoadHasRandomPw(ctx context.Context, __arg LoadHasRandomPwArg) (res bool, err error) {
+	err = c.Cli.Call(ctx, "keybase.1.user.loadHasRandomPw", []interface{}{__arg}, &res)
+	return
+}
+
+func (c UserClient) CanLogout(ctx context.Context, sessionID int) (res CanLogoutRes, err error) {
+	__arg := CanLogoutArg{SessionID: sessionID}
+	err = c.Cli.Call(ctx, "keybase.1.user.canLogout", []interface{}{__arg}, &res)
+	return
+}
+
+func (c UserClient) UserCard(ctx context.Context, __arg UserCardArg) (res *UserCard, err error) {
+	err = c.Cli.Call(ctx, "keybase.1.user.userCard", []interface{}{__arg}, &res)
 	return
 }

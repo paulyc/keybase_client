@@ -165,6 +165,10 @@ var whitelistedTeamLinkSigs = []keybase1.SigID{
 	// root prior to the team link signature. This makes it impossible for the client to independently
 	// verify that the team link was signed before the device was revoked. But it was, it's all good.
 	"e8279d7c73b8defab299094b73800262239e5a03812040ed381cc613a3db515622",
+
+	// See https://github.com/keybase/client/issues/17573; a server bug allowed a rotate after a revoke, which
+	// has been fixed in CORE-10942.
+	"070e6d737607109ba17d1d43419d950cde6d206b66c555c837566913a31ca59122",
 }
 
 func (l *TeamLoader) addProofsForKeyInUserSigchain(ctx context.Context, teamID keybase1.TeamID, link *ChainLinkUnpacked, uid keybase1.UID, key *keybase1.PublicKeyV2NaCl, userLinkMap linkMapT, proofSet *proofSetT) {
@@ -489,7 +493,7 @@ func (l *TeamLoader) applyNewLink(ctx context.Context,
 		newState = &keybase1.TeamData{
 			// Name is left blank until calculateName updates it.
 			// It shall not be blank by the time it is returned from load2.
-			Name: keybase1.TeamName{},
+			Name:                      keybase1.TeamName{},
 			PerTeamKeySeedsUnverified: make(map[keybase1.PerTeamKeyGeneration]keybase1.PerTeamKeySeedItem),
 			ReaderKeyMasks:            make(map[keybase1.TeamApplication]map[keybase1.PerTeamKeyGeneration]keybase1.MaskB64),
 		}

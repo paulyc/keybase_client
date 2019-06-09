@@ -18,8 +18,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/keybase/client/go/kbfs/data"
+	"github.com/keybase/client/go/kbfs/idutil"
 	"github.com/keybase/client/go/kbfs/libfs"
 	"github.com/keybase/client/go/kbfs/libkbfs"
+	"github.com/keybase/client/go/kbfs/tlfhandle"
 	"github.com/keybase/client/go/libkb"
 	"github.com/keybase/client/go/logger"
 	"github.com/keybase/client/go/protocol/keybase1"
@@ -79,7 +82,7 @@ func checkValidRepoName(repoName string, config libkbfs.Config) bool {
 // For the common "repo doesn't exist" case, use the error type that the client can recognize.
 func castNoSuchNameError(err error, repoName string) error {
 	switch errors.Cause(err).(type) {
-	case libkbfs.NoSuchNameError:
+	case idutil.NoSuchNameError:
 		return libkb.RepoDoesntExistError{
 			Name: repoName,
 		}
@@ -88,53 +91,18 @@ func castNoSuchNameError(err error, repoName string) error {
 	}
 }
 
-func recursiveDelete(
-	ctx context.Context, fs *libfs.FS, fi os.FileInfo) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-	}
-
-	if !fi.IsDir() {
-		// Delete regular files and symlinks directly.
-		return fs.Remove(fi.Name())
-	}
-
-	subdirFS, err := fs.Chroot(fi.Name())
-	if err != nil {
-		return err
-	}
-
-	children, err := subdirFS.ReadDir("/")
-	if err != nil {
-		return err
-	}
-	for _, childFI := range children {
-		if childFI.Name() == "." {
-			continue
-		}
-		err := recursiveDelete(ctx, subdirFS.(*libfs.FS), childFI)
-		if err != nil {
-			return err
-		}
-	}
-
-	return fs.Remove(fi.Name())
-}
-
 // CleanOldDeletedRepos completely removes any "deleted" repos that
 // have been deleted for longer than `minDeletedAgeForCleaning`.  The
 // caller is responsible for syncing any data to disk, if desired.
 func CleanOldDeletedRepos(
 	ctx context.Context, config libkbfs.Config,
-	tlfHandle *libkbfs.TlfHandle) (err error) {
+	tlfHandle *tlfhandle.Handle) (err error) {
 	fs, err := libfs.NewFS(
-		ctx, config, tlfHandle, libkbfs.MasterBranch,
+		ctx, config, tlfHandle, data.MasterBranch,
 		path.Join(kbfsRepoDir, kbfsDeletedReposDir),
 		"" /* uniq ID isn't used for removals */, keybase1.MDPriorityGit)
 	switch errors.Cause(err).(type) {
-	case libkbfs.NoSuchNameError:
+	case idutil.NoSuchNameError:
 		// Nothing to clean.
 		return nil
 	case nil:
@@ -183,7 +151,7 @@ func CleanOldDeletedRepos(
 		}
 
 		log.CDebugf(ctx, "Cleaning deleted repo %s", fi.Name())
-		err = recursiveDelete(ctx, fs, fi)
+		err = libfs.RecursiveDelete(ctx, fs, fi)
 		if err != nil {
 			return err
 		}
@@ -197,20 +165,25 @@ func CleanOldDeletedRepos(
 // limit (without returning an error).
 func CleanOldDeletedReposTimeLimited(
 	ctx context.Context, config libkbfs.Config,
-	tlfHandle *libkbfs.TlfHandle) error {
+	tlfHandle *tlfhandle.Handle) error {
 	ctx, cancel := context.WithTimeout(ctx, cleaningTimeLimit)
 	defer cancel()
 	err := CleanOldDeletedRepos(ctx, config, tlfHandle)
-	if errors.Cause(err) == context.DeadlineExceeded {
+	switch errors.Cause(err) {
+	case context.DeadlineExceeded, context.Canceled:
 		return nil
+	default:
+		if _, ok := errors.Cause(err).(libkbfs.OfflineUnsyncedError); ok {
+			return nil
+		}
+		return err
 	}
-	return err
 }
 
 // UpdateRepoMD lets the Keybase service know that a repo's MD has
 // been updated.
 func UpdateRepoMD(ctx context.Context, config libkbfs.Config,
-	tlfHandle *libkbfs.TlfHandle, fs billy.Filesystem,
+	tlfHandle *tlfhandle.Handle, fs billy.Filesystem,
 	pushType keybase1.GitPushType,
 	oldRepoName string, refDataByName RefDataByName) error {
 	folder := tlfHandle.ToFavorite().ToKBFolder(false)
@@ -280,7 +253,7 @@ func normalizeRepoName(repoName string) string {
 }
 
 func takeConfigLock(
-	fs *libfs.FS, tlfHandle *libkbfs.TlfHandle, repoName string) (
+	fs *libfs.FS, tlfHandle *tlfhandle.Handle, repoName string) (
 	closer io.Closer, err error) {
 	// Double-check that the namespace of the FS matches the
 	// normalized repo name, so that we're locking only the config
@@ -347,7 +320,7 @@ func makeExistingRepoError(
 }
 
 func createNewRepoAndID(
-	ctx context.Context, config libkbfs.Config, tlfHandle *libkbfs.TlfHandle,
+	ctx context.Context, config libkbfs.Config, tlfHandle *tlfhandle.Handle,
 	repoName string, fs *libfs.FS) (repoID ID, err error) {
 	// TODO: take a global repo lock here to make sure only one
 	// client generates the repo ID.
@@ -417,7 +390,7 @@ func lookupOrCreateDir(ctx context.Context, config libkbfs.Config,
 	n libkbfs.Node, name string) (libkbfs.Node, error) {
 	newNode, _, err := config.KBFSOps().Lookup(ctx, n, name)
 	switch errors.Cause(err).(type) {
-	case libkbfs.NoSuchNameError:
+	case idutil.NoSuchNameError:
 		newNode, _, err = config.KBFSOps().CreateDir(ctx, n, name)
 		if err != nil {
 			return nil, err
@@ -438,7 +411,7 @@ const (
 )
 
 func getOrCreateRepoAndID(
-	ctx context.Context, config libkbfs.Config, tlfHandle *libkbfs.TlfHandle,
+	ctx context.Context, config libkbfs.Config, tlfHandle *tlfhandle.Handle,
 	repoName string, uniqID string, op repoOpType) (
 	fs *libfs.FS, id ID, err error) {
 	if !checkValidRepoName(repoName, config) {
@@ -447,7 +420,7 @@ func getOrCreateRepoAndID(
 	}
 
 	rootNode, _, err := config.KBFSOps().GetOrCreateRootNode(
-		ctx, tlfHandle, libkbfs.MasterBranch)
+		ctx, tlfHandle, data.MasterBranch)
 	if err != nil {
 		return nil, NullID, err
 	}
@@ -457,7 +430,7 @@ func getOrCreateRepoAndID(
 	// exist, give them a nice error message.
 	repoExists := false
 	defer func() {
-		_, isWriteAccessErr := errors.Cause(err).(libkbfs.WriteAccessError)
+		_, isWriteAccessErr := errors.Cause(err).(tlfhandle.WriteAccessError)
 		if !repoExists && isWriteAccessErr {
 			err = libkb.RepoDoesntExistError{Name: repoName}
 		}
@@ -470,7 +443,7 @@ func getOrCreateRepoAndID(
 
 	_, repoEI, err := config.KBFSOps().Lookup(ctx, repoDir, normalizedRepoName)
 	switch errors.Cause(err).(type) {
-	case libkbfs.NoSuchNameError:
+	case idutil.NoSuchNameError:
 		if op == getOnly {
 			return nil, NullID,
 				errors.WithStack(libkb.RepoDoesntExistError{Name: repoName})
@@ -482,7 +455,7 @@ func getOrCreateRepoAndID(
 	case nil:
 		// If the repo was renamed to something else, we should
 		// override it with a new repo if we're in create-only mode.
-		if op == createOnly && repoEI.Type == libkbfs.Sym {
+		if op == createOnly && repoEI.Type == data.Sym {
 			config.MakeLogger("").CDebugf(
 				ctx, "Overwriting symlink for repo %s with a new repo",
 				normalizedRepoName)
@@ -502,7 +475,7 @@ func getOrCreateRepoAndID(
 	repoExists = true
 
 	fs, err = libfs.NewFS(
-		ctx, config, tlfHandle, libkbfs.MasterBranch,
+		ctx, config, tlfHandle, data.MasterBranch,
 		path.Join(kbfsRepoDir, normalizedRepoName),
 		uniqID, keybase1.MDPriorityGit)
 	if err != nil {
@@ -557,7 +530,7 @@ func getOrCreateRepoAndID(
 // caller is responsible for syncing the FS and flushing the journal,
 // if desired.
 func GetOrCreateRepoAndID(
-	ctx context.Context, config libkbfs.Config, tlfHandle *libkbfs.TlfHandle,
+	ctx context.Context, config libkbfs.Config, tlfHandle *tlfhandle.Handle,
 	repoName string, uniqID string) (*libfs.FS, ID, error) {
 	return getOrCreateRepoAndID(
 		ctx, config, tlfHandle, repoName, uniqID, getOrCreate)
@@ -567,7 +540,7 @@ func GetOrCreateRepoAndID(
 // specified repo, along with the stable repo ID, if it already
 // exists.
 func GetRepoAndID(
-	ctx context.Context, config libkbfs.Config, tlfHandle *libkbfs.TlfHandle,
+	ctx context.Context, config libkbfs.Config, tlfHandle *tlfhandle.Handle,
 	repoName string, uniqID string) (*libfs.FS, ID, error) {
 	return getOrCreateRepoAndID(
 		ctx, config, tlfHandle, repoName, uniqID, getOnly)
@@ -592,7 +565,7 @@ func makeUniqueID(ctx context.Context, config libkbfs.Config) (string, error) {
 // desired.  It expects the `config` object to be unique during the
 // lifetime of this call.
 func CreateRepoAndID(
-	ctx context.Context, config libkbfs.Config, tlfHandle *libkbfs.TlfHandle,
+	ctx context.Context, config libkbfs.Config, tlfHandle *tlfhandle.Handle,
 	repoName string) (ID, error) {
 	uniqID, err := makeUniqueID(ctx, config)
 	if err != nil {
@@ -618,7 +591,7 @@ func CreateRepoAndID(
 // syncing the FS and flushing the journal, if desired.  It expects
 // the `config` object to be unique during the lifetime of this call.
 func DeleteRepo(
-	ctx context.Context, config libkbfs.Config, tlfHandle *libkbfs.TlfHandle,
+	ctx context.Context, config libkbfs.Config, tlfHandle *tlfhandle.Handle,
 	repoName string) error {
 	// Create a unique ID using the verifying key and the `config`
 	// object, which should be unique to each call in practice.
@@ -629,7 +602,7 @@ func DeleteRepo(
 
 	kbfsOps := config.KBFSOps()
 	rootNode, _, err := kbfsOps.GetOrCreateRootNode(
-		ctx, tlfHandle, libkbfs.MasterBranch)
+		ctx, tlfHandle, data.MasterBranch)
 	if err != nil {
 		return err
 	}
@@ -704,7 +677,7 @@ func renameRepoInConfigFile(
 // The caller is responsible for syncing the FS and flushing the
 // journal, if desired.
 func RenameRepo(
-	ctx context.Context, config libkbfs.Config, tlfHandle *libkbfs.TlfHandle,
+	ctx context.Context, config libkbfs.Config, tlfHandle *tlfhandle.Handle,
 	oldRepoName, newRepoName string) (err error) {
 	if !checkValidRepoName(newRepoName, config) {
 		return errors.WithStack(libkb.InvalidRepoNameError{Name: newRepoName})
@@ -712,7 +685,7 @@ func RenameRepo(
 
 	kbfsOps := config.KBFSOps()
 	rootNode, _, err := kbfsOps.GetOrCreateRootNode(
-		ctx, tlfHandle, libkbfs.MasterBranch)
+		ctx, tlfHandle, data.MasterBranch)
 	if err != nil {
 		return err
 	}
@@ -736,7 +709,7 @@ func RenameRepo(
 	}
 
 	fs, err := libfs.NewFS(
-		ctx, config, tlfHandle, libkbfs.MasterBranch, path.Join(kbfsRepoDir),
+		ctx, config, tlfHandle, data.MasterBranch, path.Join(kbfsRepoDir),
 		"", keybase1.MDPriorityGit)
 	if err != nil {
 		return err
@@ -777,10 +750,10 @@ func RenameRepo(
 	// Does the new repo not exist yet?
 	_, ei, err := kbfsOps.Lookup(ctx, repoNode, normalizedNewRepoName)
 	switch errors.Cause(err).(type) {
-	case libkbfs.NoSuchNameError:
+	case idutil.NoSuchNameError:
 		// The happy path.
 	case nil:
-		if ei.Type == libkbfs.Sym {
+		if ei.Type == data.Sym {
 			config.MakeLogger("").CDebugf(
 				ctx, "Overwriting symlink for repo %s with a new repo",
 				normalizedNewRepoName)
@@ -828,7 +801,7 @@ func RenameRepo(
 	if err != nil {
 		return err
 	}
-	err = recursiveDelete(ctx, fs, fi)
+	err = libfs.RecursiveDelete(ctx, fs, fi)
 	if err != nil {
 		return err
 	}
@@ -979,7 +952,7 @@ func canDoGC(
 // GCRepo runs garbage collection on the specified repo, if it exceeds
 // any of the thresholds provided in `options`.
 func GCRepo(
-	ctx context.Context, config libkbfs.Config, tlfHandle *libkbfs.TlfHandle,
+	ctx context.Context, config libkbfs.Config, tlfHandle *tlfhandle.Handle,
 	repoName string, options GCOptions) (err error) {
 	log := config.MakeLogger("")
 	log.CDebugf(ctx, "Checking whether GC is needed for %s/%s",

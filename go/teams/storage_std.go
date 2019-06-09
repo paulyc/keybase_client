@@ -2,6 +2,7 @@ package teams
 
 import (
 	"fmt"
+
 	"github.com/keybase/client/go/libkb"
 	"github.com/keybase/client/go/protocol/keybase1"
 )
@@ -44,11 +45,7 @@ func (d *DiskStorageItem) setValue(v teamDataGeneric) error {
 }
 
 func NewStorage(g *libkb.GlobalContext) *Storage {
-	// Note(maxtaco) 2018.10.08 --- Note a bug here, that we used the `libkb.DBChatInbox` type here.
-	// That's a copy-paste bug, but we get away with it since we have a `tid:` prefix that
-	// disambiguates these entries from true Chat entries. We're not going to fix it now
-	// since it would kill the team cache, but sometime in the future we should fix it.
-	s := newStorageGeneric(g, memCacheLRUSize, diskStorageVersion, libkb.DBChatInbox, libkb.EncryptionReasonTeamsLocalStorage, "slow", func() diskItemGeneric { return &DiskStorageItem{} })
+	s := newStorageGeneric(g, memCacheLRUSize, diskStorageVersion, libkb.DBSlowTeamsAlias, libkb.EncryptionReasonTeamsLocalStorage, "slow", func() diskItemGeneric { return &DiskStorageItem{} })
 	return &Storage{s}
 }
 
@@ -57,14 +54,45 @@ func (s *Storage) Put(mctx libkb.MetaContext, state *keybase1.TeamData) {
 }
 
 // Can return nil.
-func (s *Storage) Get(mctx libkb.MetaContext, teamID keybase1.TeamID, public bool) *keybase1.TeamData {
+func (s *Storage) Get(mctx libkb.MetaContext, teamID keybase1.TeamID, public bool) (data *keybase1.TeamData, frozen bool, tombstoned bool) {
 	vp := s.storageGeneric.get(mctx, teamID, public)
 	if vp == nil {
-		return nil
+		return nil, false, false
 	}
 	ret, ok := vp.(*keybase1.TeamData)
 	if !ok {
-		mctx.CDebugf("teams.Storage#Get cast error: %T is wrong type", vp)
+		mctx.Debug("teams.Storage#Get cast error: %T is wrong type", vp)
 	}
-	return ret
+	if ret != nil && diskStorageVersion == 10 && ret.Subversion == 0 {
+		migrateInvites(mctx, ret.ID(), ret.Chain.ActiveInvites)
+		migrateInvites(mctx, ret.ID(), ret.Chain.ObsoleteInvites)
+		ret.Subversion = 1
+	}
+	if ret.Frozen {
+		mctx.Debug("returning frozen team data")
+	}
+	if ret.Tombstoned {
+		mctx.Debug("returning tombstoned team data")
+	}
+	return ret, ret.Frozen, ret.Tombstoned
+}
+
+// migrateInvites converts old 'category unknown' invites into social invites for paramproofs.
+func migrateInvites(mctx libkb.MetaContext, teamID keybase1.TeamID, invites map[keybase1.TeamInviteID]keybase1.TeamInvite) {
+	for key, invite := range invites {
+		category, err := invite.Type.C()
+		if err != nil {
+			continue
+		}
+		if category != keybase1.TeamInviteCategory_UNKNOWN {
+			continue
+		}
+		categoryStr := invite.Type.Unknown()
+		if mctx.G().GetProofServices().GetServiceType(mctx.Ctx(), categoryStr) == nil {
+			continue
+		}
+		mctx.Debug("migrateInvites repairing teamID:%v inviteID:%v cat:%v", teamID, invite.Id, categoryStr)
+		invite.Type = keybase1.NewTeamInviteTypeWithSbs(keybase1.TeamInviteSocialNetwork(categoryStr))
+		invites[key] = invite
+	}
 }

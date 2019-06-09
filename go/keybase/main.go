@@ -15,8 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/keybase/client/go/client"
 	"github.com/keybase/client/go/externals"
 	"github.com/keybase/client/go/install"
@@ -27,6 +25,7 @@ import (
 	"github.com/keybase/client/go/service"
 	"github.com/keybase/client/go/uidmap"
 	"github.com/keybase/go-framed-msgpack-rpc/rpc"
+	"golang.org/x/net/context"
 )
 
 var cmd libcmdline.Command
@@ -42,6 +41,7 @@ func handleQuickVersion() bool {
 }
 
 func keybaseExit(exitCode int) {
+	logger.Shutdown()
 	logger.RestoreConsoleMode()
 	os.Exit(exitCode)
 }
@@ -99,7 +99,7 @@ func tryToDisableProcessTracing(log logger.Logger, e *libkb.Env) {
 		return
 	}
 
-	if !e.GetFeatureFlags().Admin() {
+	if !e.GetFeatureFlags().Admin(e.GetUID()) {
 		// Admin only for now
 		return
 	}
@@ -131,6 +131,58 @@ func checkSystemUser(log logger.Logger) {
 	if isAdminUser, match, _ := libkb.IsSystemAdminUser(); isAdminUser {
 		log.Errorf("Oops, you are trying to run as an admin user (%s). This isn't supported.", match)
 		keybaseExit(int(keybase1.ExitCode_NOTOK))
+	}
+}
+
+func osPreconfigure(g *libkb.GlobalContext) {
+	switch libkb.RuntimeGroup() {
+	case keybase1.RuntimeGroup_LINUXLIKE:
+		// On Linux, we used to put the mountdir in a different location, and
+		// then we changed it, and also added a default mountdir config var so
+		// we'll know if the user has changed it.
+		// Update the mountdir to the new location, but only if they're still
+		// using the old mountpoint *and* they haven't changed it since we
+		// added a default. This functionality was originally in the
+		// run_keybase script.
+
+		configReader := g.Env.GetConfig()
+		if configReader == nil {
+			// some commands don't configure config.
+			return
+		}
+
+		userMountdir := configReader.GetMountDir()
+		userMountdirDefault := configReader.GetMountDirDefault()
+		oldMountdirDefault := g.Env.GetOldMountDirDefault()
+		mountdirDefault := g.Env.GetMountDirDefault()
+
+		// User has not set a mountdir yet; e.g., on initial install.
+		nonexistentMountdir := userMountdir == ""
+
+		// User does not have a mountdirdefault; e.g., if last used Keybase
+		// before the change mentioned above.
+		nonexistentMountdirDefault := userMountdirDefault == ""
+
+		usingOldMountdirByDefault := userMountdir == oldMountdirDefault && (userMountdirDefault == oldMountdirDefault || nonexistentMountdirDefault)
+
+		shouldResetMountdir := nonexistentMountdir || usingOldMountdirByDefault
+
+		if nonexistentMountdirDefault || shouldResetMountdir {
+			configWriter := g.Env.GetConfigWriter()
+			if configWriter == nil {
+				// some commands don't configure config.
+				return
+			}
+
+			// Set the user's mountdirdefault to the current one if it's
+			// currently empty.
+			configWriter.SetStringAtPath("mountdirdefault", mountdirDefault)
+
+			if shouldResetMountdir {
+				configWriter.SetStringAtPath("mountdir", mountdirDefault)
+			}
+		}
+	default:
 	}
 }
 
@@ -179,6 +231,11 @@ func mainInner(g *libkb.GlobalContext, startupErrors []error) error {
 	logStartupIssues(startupErrors, g.Log)
 	tryToDisableProcessTracing(g.Log, g.Env)
 
+	// Don't configure mountdir on a nofork command like nix configure redirector.
+	if cl.GetForkCmd() != libcmdline.NoFork {
+		osPreconfigure(g)
+	}
+
 	if err := configOtherLibraries(g); err != nil {
 		return err
 	}
@@ -191,6 +248,12 @@ func mainInner(g *libkb.GlobalContext, startupErrors []error) error {
 	if !cl.IsService() && !cl.SkipOutOfDateCheck() {
 		// Errors that come up in printing this warning are logged but ignored.
 		client.PrintOutOfDateWarnings(g)
+	}
+
+	// Warn the user if there is an account reset in progress
+	if !cl.IsService() && !cl.SkipAccountResetCheck() {
+		// Errors that come up in printing this warning are logged but ignored.
+		client.PrintAccountResetWarning(g)
 	}
 	return err
 }
@@ -214,7 +277,7 @@ func configureProcesses(g *libkb.GlobalContext, cl *libcmdline.CommandLine, cmd 
 	if cl.IsService() {
 		g.Log.Debug("| in configureProcesses, is service")
 		if runtime.GOOS == "linux" {
-			g.Log.Debug("| calling AutoInstall")
+			g.Log.Debug("| calling AutoInstall for Linux")
 			_, err := install.AutoInstall(g, "", false, 10*time.Second, g.Log)
 			if err != nil {
 				return err
@@ -296,8 +359,7 @@ func configureProcesses(g *libkb.GlobalContext, cl *libcmdline.CommandLine, cmd 
 	}
 
 	// Ignore error
-	err = client.WarnOutdatedKBFS(g, cl)
-	if err != nil {
+	if err = client.WarnOutdatedKBFS(g, cl); err != nil {
 		g.Log.Debug("| Could not do kbfs versioncheck: %s", err)
 	}
 

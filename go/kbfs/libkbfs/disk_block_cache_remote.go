@@ -12,9 +12,9 @@ import (
 	"github.com/keybase/client/go/kbfs/kbfsblock"
 	"github.com/keybase/client/go/kbfs/kbfscrypto"
 	"github.com/keybase/client/go/kbfs/kbfsmd"
-	kbgitkbfs "github.com/keybase/client/go/kbfs/protocol/kbgitkbfs1"
 	"github.com/keybase/client/go/kbfs/tlf"
 	"github.com/keybase/client/go/libkb"
+	kbgitkbfs "github.com/keybase/client/go/protocol/kbgitkbfs1"
 	"github.com/keybase/go-framed-msgpack-rpc/rpc"
 )
 
@@ -97,7 +97,7 @@ func (dbcr *DiskBlockCacheRemote) Get(ctx context.Context, tlfID tlf.ID,
 	return res.Buf, serverHalf, prefetchStatus, nil
 }
 
-// GetPefetchStatus implements the DiskBlockCache interface for
+// GetPrefetchStatus implements the DiskBlockCache interface for
 // DiskBlockCacheRemote.
 func (dbcr *DiskBlockCacheRemote) GetPrefetchStatus(
 	ctx context.Context, tlfID tlf.ID, blockID kbfsblock.ID,
@@ -172,10 +172,12 @@ func (dbcr *DiskBlockCacheRemote) Delete(
 // UpdateMetadata implements the DiskBlockCache interface for
 // DiskBlockCacheRemote.
 func (dbcr *DiskBlockCacheRemote) UpdateMetadata(ctx context.Context,
-	blockID kbfsblock.ID, prefetchStatus PrefetchStatus) error {
+	tlfID tlf.ID, blockID kbfsblock.ID, prefetchStatus PrefetchStatus,
+	_ DiskBlockCacheType) error {
 	dbcr.statuses.Add(blockID, prefetchStatus)
 	return dbcr.client.UpdateBlockMetadata(ctx,
 		kbgitkbfs.UpdateBlockMetadataArg{
+			TlfID:          tlfID.Bytes(),
 			BlockID:        blockID.Bytes(),
 			PrefetchStatus: prefetchStatus.ToProtocol(),
 		})
@@ -245,6 +247,27 @@ func (dbcr *DiskBlockCacheRemote) AddHomeTLF(ctx context.Context,
 func (dbcr *DiskBlockCacheRemote) ClearHomeTLFs(ctx context.Context) error {
 	// Let the local cache care about home TLFs.
 	return nil
+}
+
+// GetTlfSize implements the DiskBlockCache interface for
+// DiskBlockCacheRemote.
+func (dbcr *DiskBlockCacheRemote) GetTlfSize(
+	_ context.Context, _ tlf.ID, _ DiskBlockCacheType) (uint64, error) {
+	panic("GetTlfSize() not implemented in DiskBlockCacheRemote")
+}
+
+// GetTlfIDs implements the DiskBlockCache interface for
+// DiskBlockCacheRemote.
+func (dbcr *DiskBlockCacheRemote) GetTlfIDs(
+	_ context.Context, _ DiskBlockCacheType) ([]tlf.ID, error) {
+	panic("GetTlfIDs() not implemented in DiskBlockCacheRemote")
+}
+
+// WaitUntilStarted implements the DiskBlockCache interface for
+// DiskBlockCacheRemote.
+func (dbcr *DiskBlockCacheRemote) WaitUntilStarted(
+	_ DiskBlockCacheType) error {
+	panic("WaitUntilStarted() not implemented in DiskBlockCacheRemote")
 }
 
 // Shutdown implements the DiskBlockCache interface for DiskBlockCacheRemote.
